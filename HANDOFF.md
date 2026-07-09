@@ -90,6 +90,44 @@ Use this as the source of truth over older branch notes:
 - Draft target is exactly 5 teams per player. With 12 players, the ideal draft pool is 60 unique teams.
 - Scoring should stay simple: win = 3, draw = 1, loss = 0. Bonus rules are disabled by default.
 
+## Fixture API Coverage
+
+football-data.org is too limited on the free tier. As of 2026-07-09:
+
+- Free tier includes Premier League, La Liga, Serie A, and Champions League.
+- Free tier does not list Europa League, Conference League, FA Cup, EFL Cup, Copa del Rey, or Coppa Italia.
+- The API lookup table has codes for the extra competitions: `EL` Europa League, `UCL` UEFA Conference League, `FAC` FA Cup, `FLC` Football League Cup, `CDR` Copa del Rey, and `CIT` Coppa Italia.
+- Treat those extra competitions as paid/needs-token-verification before building an importer around them.
+- No football-data.org token is currently configured in `.env`; only Supabase public env vars are present.
+
+ESPN public endpoints are the current best free/no-signup route. They are unofficial, but no key is required and the pseudo-r/Public-ESPN-API repo documents the soccer slugs:
+
+| Competition | ESPN slug |
+|---|---|
+| Premier League | `eng.1` |
+| La Liga | `esp.1` |
+| Serie A | `ita.1` |
+| Champions League | `uefa.champions` |
+| Europa League | `uefa.europa` |
+| Conference League | `uefa.europa.conf` |
+| FA Cup | `eng.fa` |
+| EFL Cup / Carabao Cup | `eng.league_cup` |
+| Copa del Rey | `esp.copa_del_rey` |
+| Coppa Italia | `ita.coppa_italia` |
+
+Useful endpoint:
+
+```text
+https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard?dates=YYYYMMDD-YYYYMMDD&limit=100
+```
+
+Probe result on 2026-07-09:
+
+- 2026/27 Premier League, La Liga, Serie A, EFL Cup, and Coppa Italia returned fixtures.
+- 2026/27 Champions League, Europa League, Conference League, FA Cup, and Copa del Rey returned zero events, likely because their schedules were not published yet.
+- 2025/26 Champions League, Europa League, Conference League, FA Cup, and Copa del Rey all returned 100 events for the season window, confirming ESPN has usable historical/full-season data for those competitions once scheduled.
+- Build the importer as a cached Supabase sync, with date windows and periodic retries for competitions whose future schedules are not published yet.
+
 ## Auth / Users
 
 - Login URL: `/auth/login`
@@ -107,6 +145,8 @@ Known auth gotcha: users created by raw SQL need these token fields to be empty 
 - New league creation defaults to Premier League, La Liga, Serie A, Champions League, Europa League, and Conference League.
 - Draft generation now targets exactly 5 teams per player.
 - `src/lib/scoring.ts` already implements 3 points for a win, 1 for a draw, and 0 for a loss.
+- `src/app/(app)/my-teams/page.tsx` is a client-side player/team performance view with filter chips by player.
+- `src/app/(app)/standings/page.tsx` is a compact table-style standings screen.
 - Existing Supabase data may still include Bundesliga from prior setup; remove or disable it in the database before the final draft if needed.
 
 ## Things Not Yet Done
@@ -148,3 +188,7 @@ Some Codex/agent environments route outbound HTTPS through a proxy, and external
 | 2026-07-09 | Fast-forwarded `main` to include the previous feature branch work |
 | 2026-07-09 | Updated handoff and defaults to match the requested PL/La Liga/Serie A sweepstake |
 | 2026-07-09 | Changed draft page to target exactly 5 teams per player |
+| 2026-07-09 | Checked football-data.org free coverage and documented cup/Europa/Conference limitations |
+| 2026-07-09 | Reworked My Teams into a player-filterable team performance view |
+| 2026-07-09 | Made Standings more compact with a table-style mobile layout |
+| 2026-07-09 | Tested ESPN public soccer endpoints as a no-key fixture source for league, UEFA, and cup slugs |

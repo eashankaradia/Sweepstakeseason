@@ -72,7 +72,7 @@ export async function getAssignments(leagueId: string): Promise<(PlayerTeamAssig
   const supabase = await createClient()
   const { data } = await supabase
     .from('player_team_assignments')
-    .select(`*, players(*), teams(*)`)
+    .select(`*, player:players(*), team:teams(*)`)
     .eq('league_id', leagueId)
   return (data ?? []) as any[]
 }
