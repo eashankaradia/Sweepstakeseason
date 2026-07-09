@@ -19,6 +19,11 @@ const DEFAULT_COMPETITIONS = [
   { name: 'Conference League', short_name: 'ECL', competition_type: 'european',        country: null,      display_order: 7 },
 ] as const
 
+function generateCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
 export default function LeagueSettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [leagues, setLeagues] = useState<League[]>([])
@@ -27,6 +32,8 @@ export default function LeagueSettingsPage() {
   const [form, setForm] = useState({ name: 'Sweepstake 2026/27', season: '2026/2027' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState<string | null>(null)
+  const [regenerating, setRegenerating] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -49,19 +56,26 @@ export default function LeagueSettingsPage() {
     if (!form.name.trim() || !form.season.trim()) return
     setSaving(true)
     setError('')
+
     const { data: { user } } = await supabase.auth.getUser()
+    const access_code = generateCode()
+
     const { data: league, error: lgErr } = await supabase
       .from('sweepstake_leagues')
-      .insert({ name: form.name, season: form.season, created_by: user?.id })
+      .insert({ name: form.name, season: form.season, created_by: user?.id, access_code })
       .select()
       .maybeSingle()
+
     if (lgErr || !league) { setError(lgErr?.message ?? 'Failed to create league'); setSaving(false); return }
-    await supabase.from('competitions').insert(
-      DEFAULT_COMPETITIONS.map(c => ({ ...c, league_id: league.id, enabled: true }))
-    )
+
+    await supabase
+      .from('competitions')
+      .insert(DEFAULT_COMPETITIONS.map(c => ({ ...c, league_id: league.id, enabled: true })))
+
     await supabase.from('scoring_rules').insert(
       DEFAULT_SCORING_RULES.map(r => ({ ...r, league_id: league.id }))
     )
+
     setSaving(false)
     setCreating(false)
     loadData()
@@ -70,6 +84,21 @@ export default function LeagueSettingsPage() {
   async function updateStatus(league: League, status: League['status']) {
     await supabase.from('sweepstake_leagues').update({ status }).eq('id', league.id)
     loadData()
+  }
+
+  async function regenerateCode(league: League) {
+    if (!confirm('Regenerate the league code? Existing players will need the new code to log in next time.')) return
+    setRegenerating(league.id)
+    const access_code = generateCode()
+    await supabase.from('sweepstake_leagues').update({ access_code }).eq('id', league.id)
+    setRegenerating(null)
+    loadData()
+  }
+
+  async function copyCode(code: string, leagueId: string) {
+    await navigator.clipboard.writeText(code)
+    setCopied(leagueId)
+    setTimeout(() => setCopied(null), 2000)
   }
 
   if (loading) return <AppShell profile={null} title="League Setup" backHref="/settings"><PageLoader /></AppShell>
@@ -87,36 +116,78 @@ export default function LeagueSettingsPage() {
               {lg.status}
             </Badge>
           </div>
+
+          {/* League code */}
+          <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] px-3 py-2 mb-3">
+            <p className="text-[10px] text-[var(--text-muted)] mb-1">League code — share with players to let them sign in</p>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-bold text-lg tracking-widest text-[var(--text-primary)] flex-1">
+                {lg.access_code ?? '—'}
+              </span>
+              {lg.access_code && (
+                <button
+                  onClick={() => copyCode(lg.access_code!, lg.id)}
+                  className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {copied === lg.id ? 'Copied!' : 'Copy'}
+                </button>
+              )}
+              <button
+                onClick={() => regenerateCode(lg)}
+                disabled={regenerating === lg.id}
+                className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                {regenerating === lg.id ? '...' : 'Regenerate'}
+              </button>
+            </div>
+          </div>
+
           <div className="flex gap-2 flex-wrap">
             {lg.status === 'setup' && (
-              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>Set active</Button>
+              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>
+                Set active
+              </Button>
             )}
             {lg.status === 'active' && (
-              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>Mark completed</Button>
+              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>
+                Mark completed
+              </Button>
             )}
-            {lg.draft_locked && <Badge variant="info">Draft locked</Badge>}
+            {lg.draft_locked && (
+              <Badge variant="info">Draft locked</Badge>
+            )}
           </div>
         </Card>
       ))}
 
       {!creating ? (
-        <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">+ Create new league</Button>
+        <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">
+          + Create new league
+        </Button>
       ) : (
         <Card>
           <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-3">New league</h3>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-[var(--text-secondary)] block mb-1">League name</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Sweepstake 2026/27" />
+              <input
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Sweepstake 2026/27"
+              />
             </div>
             <div>
               <label className="text-xs text-[var(--text-secondary)] block mb-1">Season</label>
-              <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} placeholder="e.g. 2026/2027" />
+              <input
+                value={form.season}
+                onChange={e => setForm(f => ({ ...f, season: e.target.value }))}
+                placeholder="e.g. 2026/2027"
+              />
             </div>
           </div>
           {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
           <p className="text-xs text-[var(--text-secondary)] mt-2">
-            Creates the league with default competitions (PL, LL, BL, SA, UCL, UEL, ECL) and scoring rules.
+            Creates the league with default competitions and a random join code.
           </p>
           <div className="flex gap-2 mt-3">
             <Button onClick={createLeague} loading={saving} className="flex-1">Create</Button>
