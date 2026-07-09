@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'crests.football-data.org',
+        hostname: 'upload.wikimedia.org',
         pathname: '/**',
       },
     ],
