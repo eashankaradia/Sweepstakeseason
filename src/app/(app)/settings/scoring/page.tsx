@@ -1,14 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
-import type { Profile, League, ScoringRule } from '@/lib/supabase/types'
+import type { League, ScoringRule } from '@/lib/supabase/types'
 
 export default function ScoringSettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [league, setLeague] = useState<League | null>(null)
   const [rules, setRules] = useState<ScoringRule[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,14 +21,9 @@ export default function ScoringSettingsPage() {
 
   async function loadData() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-    const [{ data: prof }, { data: leagues }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false }).limit(1),
-    ])
-    setProfile(prof)
-    const lg = leagues?.[0] ?? null
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId) { setLoading(false); return }
+    const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (lg) {
       const { data: r } = await supabase.from('scoring_rules').select('*').eq('league_id', lg.id)
@@ -43,9 +38,7 @@ export default function ScoringSettingsPage() {
   async function saveRule(rule: ScoringRule) {
     setSaving(rule.id)
     const pts = parseFloat(editValues[rule.id] ?? rule.points.toString())
-    if (!isNaN(pts)) {
-      await supabase.from('scoring_rules').update({ points: pts }).eq('id', rule.id)
-    }
+    if (!isNaN(pts)) await supabase.from('scoring_rules').update({ points: pts }).eq('id', rule.id)
     setSaving(null)
     loadData()
   }
@@ -58,10 +51,10 @@ export default function ScoringSettingsPage() {
   const coreRules = rules.filter(r => ['win', 'draw', 'loss'].includes(r.rule_key))
   const bonusRules = rules.filter(r => !['win', 'draw', 'loss'].includes(r.rule_key))
 
-  if (loading) return <AppShell profile={null} title="Scoring" backHref="/settings"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="Scoring" backHref="/settings"><PageLoader /></AppShell>
 
   return (
-    <AppShell profile={profile} title="Scoring Rules" backHref="/settings">
+    <AppShell title="Scoring Rules" backHref="/settings">
       {!league ? (
         <EmptyState icon="🏆" title="Create a league first" />
       ) : (
@@ -69,38 +62,20 @@ export default function ScoringSettingsPage() {
           <p className="text-xs text-[var(--text-secondary)] mb-4">
             Configure how points are awarded. Enable bonus rules to add extra rewards and penalties.
           </p>
-
           <div className="mb-5">
             <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Match points</p>
             <div className="space-y-2">
               {coreRules.map(rule => (
-                <RuleRow
-                  key={rule.id}
-                  rule={rule}
-                  value={editValues[rule.id] ?? rule.points.toString()}
-                  onChange={v => setEditValues(prev => ({ ...prev, [rule.id]: v }))}
-                  onSave={() => saveRule(rule)}
-                  onToggle={() => toggleRule(rule)}
-                  saving={saving === rule.id}
-                />
+                <RuleRow key={rule.id} rule={rule} value={editValues[rule.id] ?? rule.points.toString()} onChange={v => setEditValues(prev => ({ ...prev, [rule.id]: v }))} onSave={() => saveRule(rule)} onToggle={() => toggleRule(rule)} saving={saving === rule.id} />
               ))}
             </div>
           </div>
-
           {bonusRules.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Bonuses & penalties</p>
               <div className="space-y-2">
                 {bonusRules.map(rule => (
-                  <RuleRow
-                    key={rule.id}
-                    rule={rule}
-                    value={editValues[rule.id] ?? rule.points.toString()}
-                    onChange={v => setEditValues(prev => ({ ...prev, [rule.id]: v }))}
-                    onSave={() => saveRule(rule)}
-                    onToggle={() => toggleRule(rule)}
-                    saving={saving === rule.id}
-                  />
+                  <RuleRow key={rule.id} rule={rule} value={editValues[rule.id] ?? rule.points.toString()} onChange={v => setEditValues(prev => ({ ...prev, [rule.id]: v }))} onSave={() => saveRule(rule)} onToggle={() => toggleRule(rule)} saving={saving === rule.id} />
                 ))}
               </div>
             </div>
@@ -125,10 +100,7 @@ function RuleRow({ rule, value, onChange, onSave, onToggle, saving }: {
           <input type="number" value={value} onChange={e => onChange(e.target.value)} className="!w-16 text-center !py-1 text-sm" disabled={!rule.enabled} />
           <span className="text-xs text-[var(--text-secondary)]">pts</span>
           <Button size="sm" onClick={onSave} loading={saving} disabled={!rule.enabled} variant="ghost">Save</Button>
-          <button
-            onClick={onToggle}
-            className={`w-9 h-5 rounded-full transition-colors shrink-0 ${rule.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}
-          >
+          <button onClick={onToggle} className={`w-9 h-5 rounded-full transition-colors shrink-0 ${rule.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}>
             <div className={`w-3.5 h-3.5 bg-white rounded-full mx-0.5 transition-transform ${rule.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
           </button>
         </div>

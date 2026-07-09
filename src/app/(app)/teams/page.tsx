@@ -1,4 +1,5 @@
-import { getProfile, getActiveLeague, getPlayers, getAssignments, getCompetitions, getTeamScores } from '@/lib/data'
+import { cookies } from 'next/headers'
+import { getLeagueById, getPlayers, getAssignments, getTeamScores } from '@/lib/data'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { TeamCrest } from '@/components/ui/TeamCrest'
@@ -9,11 +10,13 @@ import { createClient } from '@/lib/supabase/server'
 import type { Competition, Team } from '@/lib/supabase/types'
 
 export default async function TeamsPage() {
-  const [profile, league] = await Promise.all([getProfile(), getActiveLeague()])
+  const cookieStore = await cookies()
+  const leagueId = cookieStore.get('ss_league')?.value
+  const league = leagueId ? await getLeagueById(leagueId) : null
 
   if (!league) {
     return (
-      <AppShell profile={profile} title="Teams">
+      <AppShell title="Teams">
         <EmptyState icon="⚽" title="No league yet" />
       </AppShell>
     )
@@ -29,12 +32,7 @@ export default async function TeamsPage() {
 
   const { data: teamCompData } = await supabase
     .from('team_competitions')
-    .select(`
-      team_id,
-      competition_id,
-      teams (*),
-      competitions (*)
-    `)
+    .select(`team_id, competition_id, teams (*), competitions (*)`)
     .eq('league_id', league.id)
 
   const competitionMap = new Map<string, { competition: Competition; teams: Array<Team & { assignedPlayer: typeof players[0] | null; score: any }> }>()
@@ -42,38 +40,26 @@ export default async function TeamsPage() {
   for (const row of (teamCompData ?? []) as any[]) {
     const comp: Competition = row.competitions
     if (!comp.enabled) continue
-
-    if (!competitionMap.has(comp.id)) {
-      competitionMap.set(comp.id, { competition: comp, teams: [] })
-    }
-
+    if (!competitionMap.has(comp.id)) competitionMap.set(comp.id, { competition: comp, teams: [] })
     const team: Team = row.teams
     const assignment = assignments.find(a => a.team_id === team.id)
     const assignedPlayer = assignment ? players.find(p => p.id === assignment.player_id) ?? null : null
     const score = teamScores.find(ts => ts.team_id === team.id)
-
     const existing = competitionMap.get(comp.id)!
-    if (!existing.teams.find(t => t.id === team.id)) {
-      existing.teams.push({ ...team, assignedPlayer, score })
-    }
+    if (!existing.teams.find(t => t.id === team.id)) existing.teams.push({ ...team, assignedPlayer, score })
   }
 
   const sortedCompetitions = Array.from(competitionMap.values()).sort(
     (a, b) => a.competition.display_order - b.competition.display_order
   )
-
   for (const entry of sortedCompetitions) {
     entry.teams.sort((a, b) => (b.score?.total_points ?? 0) - (a.score?.total_points ?? 0))
   }
 
   return (
-    <AppShell profile={profile} title="Teams">
+    <AppShell title="Teams">
       {sortedCompetitions.length === 0 ? (
-        <EmptyState
-          icon="⚽"
-          title="No teams assigned"
-          description="Enable competitions and run the draft to see teams here."
-        />
+        <EmptyState icon="⚽" title="No teams assigned" description="Enable competitions and run the draft to see teams here." />
       ) : (
         <div className="space-y-5">
           {sortedCompetitions.map(({ competition, teams }) => (
@@ -100,9 +86,7 @@ export default async function TeamsPage() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Avatar name={team.assignedPlayer.name} color={team.assignedPlayer.color} size="sm" />
                           <div className="text-right">
-                            <div className="text-xs font-semibold text-[var(--text-primary)]">
-                              {team.score?.total_points ?? 0}
-                            </div>
+                            <div className="text-xs font-semibold text-[var(--text-primary)]">{team.score?.total_points ?? 0}</div>
                             <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
                           </div>
                         </div>
