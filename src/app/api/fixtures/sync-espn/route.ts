@@ -34,7 +34,12 @@ export async function POST() {
 
   const [{ data: competitions }, { data: teamRows }, { data: existingFixtures }] = await Promise.all([
     supabase.from('competitions').select('*').eq('league_id', league.id).eq('enabled', true),
-    supabase.from('team_competitions').select('team_id, teams(*)').eq('league_id', league.id),
+    supabase
+      .from('team_competitions')
+      .select('team_id, teams(*), competitions!inner(competition_type,enabled)')
+      .eq('league_id', league.id)
+      .eq('competitions.competition_type', 'domestic_league')
+      .eq('competitions.enabled', true),
     supabase.from('fixtures').select('external_id').eq('league_id', league.id).not('external_id', 'is', null),
   ])
 

@@ -85,10 +85,15 @@ export default function DraftPage() {
       { data: authData },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position'),
-      supabase.from('team_competitions').select('team_id, competition_id, teams(*)').eq('league_id', lg.id),
+      supabase
+        .from('team_competitions')
+        .select('team_id, competition_id, teams(*), competitions!inner(competition_type,enabled)')
+        .eq('league_id', lg.id)
+        .eq('competitions.competition_type', 'domestic_league')
+        .eq('competitions.enabled', true),
       supabase.from('draft_runs').select('*').eq('league_id', lg.id).order('run_number', { ascending: false }),
       supabase.from('player_team_assignments').select('*, teams(*), players(*)').eq('league_id', lg.id),
-      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
+      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).eq('competition_type', 'domestic_league').order('display_order'),
       supabase.auth.getUser(),
     ])
 

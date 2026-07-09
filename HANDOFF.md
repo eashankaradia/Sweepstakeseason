@@ -89,6 +89,7 @@ Use this as the source of truth over older branch notes:
 - Domestic cups are optional and should be added only if the selected API can support them reliably.
 - Draft target is exactly 5 teams per player. With 12 players, the ideal draft pool is 60 unique teams.
 - Scoring should stay simple: win = 3, draw = 1, loss = 0. Bonus rules are disabled by default.
+- The draft pool must be exactly 20 Premier League + 20 La Liga + 20 Serie A teams. Do not use European/cup competition memberships as draft-pool inputs.
 
 ## Fixture API Coverage
 
@@ -151,8 +152,10 @@ Known auth gotcha: users created by raw SQL need these token fields to be empty 
 - `src/app/(app)/draft/page.tsx` is view-only for normal players; only admin users can generate, save, lock, unlock, or change the draft pool.
 - Admin detection currently allows `profiles.is_admin = true` and the known Eashan emails in `src/lib/admin.ts`; Eashan's two existing profile rows have also been updated to `is_admin = true`.
 - Missing crest URLs for Como and SV Elversberg were written to Supabase and also added as component fallbacks in `TeamCrest`.
-- ESPN fixture seed inserted 865 fixtures on 2026-07-09 for the current league. UEFA/FA Cup/Copa del Rey returned zero 2026/27 events at that moment because ESPN had not published those future schedules yet.
-- Existing Supabase data may still include Bundesliga from prior setup; remove or disable it in the database before the final draft if needed.
+- Active Supabase league has been corrected to exactly 60 domestic teams: 20 PL, 20 La Liga, 20 Serie A. Coventry City, Hull City, Ipswich Town, Leeds United, Alaves, Elche, Espanyol, Levante, Racing Santander, Rayo Vallecano, Frosinone, Genoa, Parma, Sassuolo, and Venezia were added from ESPN's 2026/27 league team lists.
+- ESPN fixture seed inserted 1,150 scheduled fixtures on 2026-07-09 for the current league: 380 PL, 380 La Liga, 380 Serie A, 4 EFL Cup, 6 Coppa Italia. UEFA/FA Cup/Copa del Rey returned zero 2026/27 events at that moment because ESPN had not published those future schedules yet.
+- Old draft runs, assignments, and fixtures were cleared after correcting the team pool, because they were based on incomplete 15-team league memberships.
+- Bundesliga is disabled in Supabase. Old Bundesliga team rows may still exist globally, but the draft page now queries only enabled domestic league competitions.
 
 ## Things Not Yet Done
 
@@ -160,8 +163,8 @@ Known auth gotcha: users created by raw SQL need these token fields to be empty 
 2. Scoring engine: no cron job, webhook, or scheduled job updates scores from live results yet.
 3. Vercel deployment: app needs deployment from `main`.
 4. Domestic cups: competition rows exist; rerun ESPN sync once FA Cup/Copa del Rey schedules are published.
-5. Existing database cleanup: Bundesliga has been disabled in Supabase, but old team rows/team_competitions still exist and can be removed later if desired.
-6. Run and lock the draft after the final competition/team pool is confirmed.
+5. Existing database cleanup: old global rows for non-draft teams can be removed later if desired, but they are no longer part of the active draft pool.
+6. Run and lock the draft now that the domestic 60-team pool is confirmed.
 7. Onboarding should be checked end to end for new signups.
 8. ESPN importer should eventually recalculate scores automatically when completed fixtures are synced, instead of relying on manual result entry.
 
@@ -199,6 +202,8 @@ Some Codex/agent environments route outbound HTTPS through a proxy, and external
 | 2026-07-09 | Made Standings more compact with a table-style mobile layout |
 | 2026-07-09 | Tested ESPN public soccer endpoints as a no-key fixture source for league, UEFA, and cup slugs |
 | 2026-07-09 | Added admin-only ESPN fixture sync endpoint and Fixtures page controls |
-| 2026-07-09 | Seeded 865 ESPN fixtures into Supabase for the active league |
+| 2026-07-09 | Initially seeded 865 ESPN fixtures before discovering the active domestic team pool was incomplete |
 | 2026-07-09 | Filled Como and SV Elversberg crest gaps in Supabase and TeamCrest fallback mapping |
 | 2026-07-09 | Made Draft Room controls admin-only while keeping the draw visible to players |
+| 2026-07-09 | Corrected the active draft pool to all 60 teams across PL, La Liga, and Serie A |
+| 2026-07-09 | Cleared old draft/fixtures and reseeded 1,150 fixtures against the corrected 60-team pool |
