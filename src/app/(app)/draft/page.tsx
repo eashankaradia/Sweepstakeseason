@@ -18,7 +18,8 @@ export default function DraftPage() {
   const [players, setPlayers] = useState<Player[]>([])
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [compTeamMap, setCompTeamMap] = useState<Map<string, Team[]>>(new Map())
-  const [selectedCompIds, setSelectedCompIds] = useState<string[]>([])
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set())
+  const [expandedCompIds, setExpandedCompIds] = useState<Set<string>>(new Set())
   const [allocations, setAllocations] = useState<DraftAllocation[]>([])
   const [draftRuns, setDraftRuns] = useState<DraftRun[]>([])
   const [currentAssignments, setCurrentAssignments] = useState<any[]>([])
@@ -37,15 +38,17 @@ export default function DraftPage() {
     const seen = new Set<string>()
     const teams: Team[] = []
     const euIds = new Set<string>()
-    for (const compId of selectedCompIds) {
-      const comp = competitions.find(c => c.id === compId)
-      for (const team of compTeamMap.get(compId) ?? []) {
-        if (!seen.has(team.id)) { seen.add(team.id); teams.push(team) }
-        if (comp?.competition_type === 'european') euIds.add(team.id)
+    for (const comp of competitions) {
+      const isEu = comp.competition_type === 'european'
+      for (const team of compTeamMap.get(comp.id) ?? []) {
+        if (selectedTeamIds.has(team.id)) {
+          if (!seen.has(team.id)) { seen.add(team.id); teams.push(team) }
+          if (isEu) euIds.add(team.id)
+        }
       }
     }
     return { filteredTeams: teams, filteredEuIds: euIds }
-  }, [selectedCompIds, compTeamMap, competitions])
+  }, [selectedTeamIds, compTeamMap, competitions])
 
   const allEuIds = useMemo(() => {
     const ids = new Set<string>()
@@ -99,14 +102,63 @@ export default function DraftPage() {
     setCompTeamMap(map)
 
     if (!initialized.current) {
-      setSelectedCompIds(Array.from(map.keys()))
+      const all = new Set<string>()
+      for (const [, teams] of map) teams.forEach(t => all.add(t.id))
+      setSelectedTeamIds(all)
       initialized.current = true
     }
     setLoading(false)
   }
 
-  function toggleComp(id: string) {
-    setSelectedCompIds(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
+  function getCompSelectionState(compId: string): 'all' | 'some' | 'none' {
+    const teams = compTeamMap.get(compId) ?? []
+    if (teams.length === 0) return 'none'
+    const count = teams.filter(t => selectedTeamIds.has(t.id)).length
+    if (count === 0) return 'none'
+    if (count === teams.length) return 'all'
+    return 'some'
+  }
+
+  function toggleComp(compId: string) {
+    const teams = compTeamMap.get(compId) ?? []
+    const allSelected = teams.every(t => selectedTeamIds.has(t.id))
+    setSelectedTeamIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) teams.forEach(t => next.delete(t.id))
+      else teams.forEach(t => next.add(t.id))
+      return next
+    })
+    setAllocations([])
+  }
+
+  function toggleTeam(teamId: string) {
+    setSelectedTeamIds(prev => {
+      const next = new Set(prev)
+      if (next.has(teamId)) next.delete(teamId)
+      else next.add(teamId)
+      return next
+    })
+    setAllocations([])
+  }
+
+  function toggleExpanded(compId: string) {
+    setExpandedCompIds(prev => {
+      const next = new Set(prev)
+      if (next.has(compId)) next.delete(compId)
+      else next.add(compId)
+      return next
+    })
+  }
+
+  function selectAll() {
+    const all = new Set<string>()
+    for (const [, teams] of compTeamMap) teams.forEach(t => all.add(t.id))
+    setSelectedTeamIds(all)
+    setAllocations([])
+  }
+
+  function deselectAll() {
+    setSelectedTeamIds(new Set())
     setAllocations([])
   }
 
@@ -115,8 +167,8 @@ export default function DraftPage() {
     setGenerating(true)
     try {
       if (players.length < 2) throw new Error('Need at least 2 players')
-      if (selectedCompIds.length === 0) throw new Error('Select at least one competition')
-      if (tpp < 1) throw new Error(`Not enough teams — select more competitions (have ${filteredTeams.length} for ${players.length} players)`)
+      if (selectedTeamIds.size === 0) throw new Error('Select at least one team')
+      if (tpp < 1) throw new Error(`Not enough teams — select more (have ${filteredTeams.length} for ${players.length} players)`)
       const result = runDraft(
         players.map(p => ({ id: p.id, name: p.name, color: p.color })),
         filteredTeams,
@@ -174,6 +226,8 @@ export default function DraftPage() {
     return { player: p, teams: teams.filter(Boolean), euCount: teams.filter((t: any) => t && allEuIds.has(t.id)).length }
   })
 
+  const totalTeams = Array.from(compTeamMap.values()).reduce((s, t) => s + t.length, 0)
+
   return (
     <AppShell title="Draft Room">
       <div className="flex items-center gap-2 mb-4">
@@ -186,35 +240,108 @@ export default function DraftPage() {
 
       {competitions.length > 0 && (
         <Card className="mb-4">
-          <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-3">Competitions to draft from</h3>
-          <div className="space-y-2.5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm text-[var(--text-primary)]">Teams to draft from</h3>
+            <div className="flex gap-2">
+              <button onClick={selectAll} disabled={isLocked} className="text-[10px] text-[var(--accent)] disabled:opacity-40">All</button>
+              <span className="text-[10px] text-[var(--text-muted)]">/</span>
+              <button onClick={deselectAll} disabled={isLocked} className="text-[10px] text-[var(--text-muted)] disabled:opacity-40">None</button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
             {competitions.map(comp => {
-              const teamCount = compTeamMap.get(comp.id)?.length ?? 0
-              const checked = selectedCompIds.includes(comp.id)
+              const teams = compTeamMap.get(comp.id) ?? []
+              const state = getCompSelectionState(comp.id)
+              const isExpanded = expandedCompIds.has(comp.id)
+              const selectedCount = teams.filter(t => selectedTeamIds.has(t.id)).length
+              const isEu = comp.competition_type === 'european'
+
               return (
-                <label key={comp.id} className="flex items-center gap-3 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleComp(comp.id)}
-                    disabled={isLocked}
-                    className="w-4 h-4 rounded accent-[var(--accent)] shrink-0"
-                  />
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                    comp.competition_type === 'european' ? 'bg-purple-500/20 text-purple-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                  }`}>
-                    {comp.short_name}
+                <div key={comp.id} className="rounded-lg overflow-hidden">
+                  {/* Competition header */}
+                  <div className="flex items-center gap-2 py-1.5">
+                    {/* Expand toggle */}
+                    <button
+                      onClick={() => toggleExpanded(comp.id)}
+                      className="w-5 h-5 flex items-center justify-center text-[var(--text-muted)] shrink-0"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                        <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+
+                    {/* Competition-level checkbox */}
+                    <button
+                      onClick={() => { if (!isLocked) toggleComp(comp.id) }}
+                      disabled={isLocked}
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                        state === 'all' ? 'bg-[var(--accent)] border-[var(--accent)]'
+                        : state === 'some' ? 'bg-[var(--accent)]/30 border-[var(--accent)]'
+                        : 'border-[var(--border)] bg-transparent'
+                      } disabled:opacity-40`}
+                    >
+                      {state === 'all' && (
+                        <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4l2 2 3-3" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      )}
+                      {state === 'some' && (
+                        <svg width="8" height="2" viewBox="0 0 8 2"><line x1="1" y1="1" x2="7" y2="1" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                      )}
+                    </button>
+
+                    {/* Badge + name */}
+                    <button onClick={() => toggleExpanded(comp.id)} className="flex items-center gap-2 flex-1 text-left">
+                      <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                        isEu ? 'bg-purple-500/20 text-purple-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                      }`}>
+                        {comp.short_name}
+                      </div>
+                      <span className="text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
+                    </button>
+
+                    <span className={`text-[10px] shrink-0 ${
+                      state === 'none' ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'
+                    }`}>
+                      {selectedCount}/{teams.length}
+                    </span>
                   </div>
-                  <span className={`text-sm flex-1 ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>{comp.name}</span>
-                  <span className="text-xs text-[var(--text-muted)] shrink-0">{teamCount} teams</span>
-                </label>
+
+                  {/* Expanded team list */}
+                  {isExpanded && teams.length > 0 && (
+                    <div className="ml-7 mb-2 space-y-0.5">
+                      {teams.sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || a.name.localeCompare(b.name)).map(team => {
+                        const checked = selectedTeamIds.has(team.id)
+                        return (
+                          <label key={team.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                            <div
+                              onClick={() => { if (!isLocked) toggleTeam(team.id) }}
+                              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+                                checked ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)] bg-transparent'
+                              } ${isLocked ? 'opacity-40 cursor-default' : ''}`}
+                            >
+                              {checked && (
+                                <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4l2 2 3-3" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                              )}
+                            </div>
+                            <TeamCrest team={team} size="xs" />
+                            <span className={`text-xs flex-1 ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                              {team.name}
+                            </span>
+                            {team.tier === 1 && <span className="text-[9px] text-amber-400">★</span>}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
+
           {players.length > 0 && filteredTeams.length > 0 && (
             <div className="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-              {filteredTeams.length} teams · {players.length} players →{' '}
-              <strong className="text-[var(--text-primary)]">{tpp} teams each</strong>
+              {selectedTeamIds.size} of {totalTeams} teams selected · {players.length} players →{' '}
+              <strong className="text-[var(--text-primary)]">{tpp} each</strong>
               {unusedTeams > 0 && <span className="text-[var(--text-muted)]"> ({unusedTeams} unused)</span>}
             </div>
           )}
@@ -225,7 +352,7 @@ export default function DraftPage() {
         <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">Requirements</h3>
         <div className="space-y-1.5">
           <Req ok={players.length >= 2} label={`Players: ${players.length}`} />
-          <Req ok={selectedCompIds.length > 0} label={`Competitions: ${selectedCompIds.length} selected`} />
+          <Req ok={selectedTeamIds.size > 0} label={`Teams selected: ${selectedTeamIds.size}`} />
           <Req
             ok={tpp >= 1}
             label={tpp >= 1
