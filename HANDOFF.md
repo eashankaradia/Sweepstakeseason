@@ -269,3 +269,4 @@ The remote Claude Code / Codex environment routes outbound HTTPS through a proxy
 | Session 2 | Updated `TeamCrest` component to show logo image with graceful fallback to coloured initials |
 | Session 2 | Fixed European competition teams: replaced incorrect lineup with actual 2025/26 qualifiers (UCL 18, UEL 9, ECL 4) |
 | Session 2 | Created `.gitignore`, force-synced feature branch to main, all changes committed and pushed |
+| Session 3 | UI overhaul: standings now a table with W/D/L/Pts columns + rank badges; dashboard adds a personalised "Your standing" hero card with player-colour gradient; my-teams converts to client component, highlights logged-in user, adds competition badges per team; teams page gets coloured competition section headers (indigo domestic / purple European); BottomNav active tab gets a pill highlight |
