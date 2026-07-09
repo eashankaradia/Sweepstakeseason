@@ -94,6 +94,7 @@ export interface Database {
           country: string | null
           enabled: boolean
           display_order: number
+          espn_slug: string | null
           created_at: string
         }
         Insert: {
@@ -104,12 +105,14 @@ export interface Database {
           country?: string | null
           enabled?: boolean
           display_order?: number
+          espn_slug?: string | null
         }
         Update: {
           name?: string
           short_name?: string
           enabled?: boolean
           display_order?: number
+          espn_slug?: string | null
         }
       }
       teams: {
@@ -122,6 +125,8 @@ export interface Database {
           primary_color: string
           secondary_color: string
           logo_url: string | null
+          league_position: number | null
+          espn_team_id: string | null
           created_at: string
         }
         Insert: {
@@ -132,6 +137,8 @@ export interface Database {
           primary_color?: string
           secondary_color?: string
           logo_url?: string | null
+          league_position?: number | null
+          espn_team_id?: string | null
         }
         Update: {
           name?: string
@@ -141,6 +148,8 @@ export interface Database {
           primary_color?: string
           secondary_color?: string
           logo_url?: string | null
+          league_position?: number | null
+          espn_team_id?: string | null
         }
       }
       team_competitions: {
@@ -218,6 +227,9 @@ export interface Database {
           round: string | null
           matchday: number | null
           external_id: string | null
+          home_odds: number | null
+          draw_odds: number | null
+          away_odds: number | null
           created_at: string
           updated_at: string
         }
@@ -233,6 +245,9 @@ export interface Database {
           round?: string | null
           matchday?: number | null
           external_id?: string | null
+          home_odds?: number | null
+          draw_odds?: number | null
+          away_odds?: number | null
         }
         Update: {
           kickoff_time?: string | null
@@ -241,6 +256,9 @@ export interface Database {
           away_score?: number | null
           round?: string | null
           matchday?: number | null
+          home_odds?: number | null
+          draw_odds?: number | null
+          away_odds?: number | null
         }
       }
       scoring_rules: {

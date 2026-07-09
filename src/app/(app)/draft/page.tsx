@@ -169,10 +169,19 @@ export default function DraftPage() {
       if (players.length < 2) throw new Error('Need at least 2 players')
       if (selectedTeamIds.size === 0) throw new Error('Select at least one team')
       if (tpp < 1) throw new Error(`Not enough teams — select more (have ${filteredTeams.length} for ${players.length} players)`)
+      // Build leagueSizeMap: teamId → number of teams in their domestic league
+      const leagueSizeMap = new Map<string, number>()
+      for (const comp of competitions) {
+        if (comp.competition_type !== 'european') {
+          const teams = compTeamMap.get(comp.id) ?? []
+          for (const team of teams) leagueSizeMap.set(team.id, teams.length)
+        }
+      }
       const result = runDraft(
         players.map(p => ({ id: p.id, name: p.name, color: p.color })),
         filteredTeams,
         filteredEuIds,
+        leagueSizeMap,
       )
       setAllocations(result)
     } catch (e: any) {
@@ -327,6 +336,9 @@ export default function DraftPage() {
                             <span className={`text-xs flex-1 ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                               {team.name}
                             </span>
+                            {(team as any).league_position != null && (
+                              <span className="text-[9px] text-[var(--text-muted)]">#{(team as any).league_position}</span>
+                            )}
                             {team.tier === 1 && <span className="text-[9px] text-amber-400">★</span>}
                           </label>
                         )
@@ -396,13 +408,14 @@ export default function DraftPage() {
           <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">{allocations.length > 0 ? 'Preview' : 'Current allocation'}</h3>
           <div className="space-y-2">
             {(allocations.length > 0
-              ? allocations.map(a => ({ name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, euCount: a.europeanCount }))
-              : currentAlloc.map(({ player, teams, euCount }) => ({ name: player.name, color: player.color, teams, euCount }))
+              ? allocations.map(a => ({ name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, euCount: a.europeanCount, avgPosition: a.avgPosition }))
+              : currentAlloc.map(({ player, teams, euCount }) => ({ name: player.name, color: player.color, teams, euCount, avgPosition: null as number | null }))
             ).map((entry, i) => (
               <Card key={i}>
                 <div className="flex items-center gap-2 mb-2">
                   <Avatar name={entry.name} color={entry.color} size="sm" />
                   <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{entry.name}</span>
+                  {entry.avgPosition != null && <span className="text-[10px] text-[var(--text-muted)]">avg pos {entry.avgPosition}</span>}
                   <span className="text-xs text-[var(--text-muted)]">{entry.teams.length} teams</span>
                   {entry.euCount > 0 && <Badge variant="purple" className="text-[9px]">{entry.euCount} EU</Badge>}
                 </div>
