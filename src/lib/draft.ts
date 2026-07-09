@@ -35,13 +35,18 @@ function shuffle<T>(arr: T[]): T[] {
 export function runDraft(
   players: DraftPlayer[],
   teams: Team[],
-  europeanTeamIds: Set<string>
+  europeanTeamIds: Set<string>,
+  teamsPerPlayer?: number
 ): DraftAllocation[] {
   const numPlayers = players.length
-  const teamsPerPlayer = 5
+  const tpp = teamsPerPlayer ?? Math.floor(teams.length / numPlayers)
 
-  if (teams.length < numPlayers * teamsPerPlayer) {
-    throw new Error(`Need at least ${numPlayers * teamsPerPlayer} teams, got ${teams.length}`)
+  if (tpp < 1) {
+    throw new Error(`Not enough teams for ${numPlayers} players (have ${teams.length})`)
+  }
+
+  if (teams.length < numPlayers * tpp) {
+    throw new Error(`Need at least ${numPlayers * tpp} teams, got ${teams.length}`)
   }
 
   const europeanTeams = shuffle(teams.filter(t => europeanTeamIds.has(t.id)))
@@ -102,7 +107,7 @@ export function runDraft(
   while (nonIdx < nonPool.length) {
     allocations.sort((a, b) => a.teams.length - b.teams.length)
     const target = allocations[0]
-    if (target.teams.length >= teamsPerPlayer) break
+    if (target.teams.length >= tpp) break
     target.teams.push(nonPool[nonIdx++])
   }
 
@@ -112,7 +117,7 @@ export function runDraft(
   ])
   let remIdx = 0
   for (const alloc of allocations) {
-    while (alloc.teams.length < teamsPerPlayer && remIdx < allRemaining.length) {
+    while (alloc.teams.length < tpp && remIdx < allRemaining.length) {
       alloc.teams.push(allRemaining[remIdx++])
     }
   }
@@ -127,14 +132,15 @@ export function runDraft(
 
 export function validateDraft(
   allocations: DraftAllocation[],
-  teamsPerPlayer = 5
+  teamsPerPlayer?: number
 ): DraftValidation {
+  const tpp = teamsPerPlayer ?? allocations[0]?.teams.length ?? 5
   const errors: string[] = []
   const warnings: string[] = []
 
   for (const alloc of allocations) {
-    if (alloc.teams.length !== teamsPerPlayer) {
-      errors.push(`${alloc.playerName} has ${alloc.teams.length} teams (expected ${teamsPerPlayer})`)
+    if (alloc.teams.length !== tpp) {
+      errors.push(`${alloc.playerName} has ${alloc.teams.length} teams (expected ${tpp})`)
     }
   }
 
