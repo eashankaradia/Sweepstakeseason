@@ -13,6 +13,8 @@ import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { formatDate } from '@/lib/utils'
 import type { League, Player, Team, Competition, DraftRun } from '@/lib/supabase/types'
 
+const TEAMS_PER_PLAYER = 5
+
 export default function DraftPage() {
   const [league, setLeague] = useState<League | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -60,7 +62,7 @@ export default function DraftPage() {
     return ids
   }, [competitions, compTeamMap])
 
-  const tpp = players.length > 0 ? Math.floor(filteredTeams.length / players.length) : 0
+  const tpp = players.length > 0 && filteredTeams.length >= players.length * TEAMS_PER_PLAYER ? TEAMS_PER_PLAYER : 0
   const unusedTeams = players.length > 0 ? filteredTeams.length - players.length * tpp : 0
 
   async function loadData() {
@@ -168,11 +170,12 @@ export default function DraftPage() {
     try {
       if (players.length < 2) throw new Error('Need at least 2 players')
       if (selectedTeamIds.size === 0) throw new Error('Select at least one team')
-      if (tpp < 1) throw new Error(`Not enough teams — select more (have ${filteredTeams.length} for ${players.length} players)`)
+      if (tpp < 1) throw new Error(`Need ${players.length * TEAMS_PER_PLAYER} teams for ${players.length} players to get ${TEAMS_PER_PLAYER} each (have ${filteredTeams.length})`)
       const result = runDraft(
         players.map(p => ({ id: p.id, name: p.name, color: p.color })),
         filteredTeams,
         filteredEuIds,
+        TEAMS_PER_PLAYER,
       )
       setAllocations(result)
     } catch (e: any) {
@@ -341,7 +344,7 @@ export default function DraftPage() {
           {players.length > 0 && filteredTeams.length > 0 && (
             <div className="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
               {selectedTeamIds.size} of {totalTeams} teams selected · {players.length} players →{' '}
-              <strong className="text-[var(--text-primary)]">{tpp} each</strong>
+              <strong className="text-[var(--text-primary)]">{TEAMS_PER_PLAYER} each</strong>
               {unusedTeams > 0 && <span className="text-[var(--text-muted)]"> ({unusedTeams} unused)</span>}
             </div>
           )}
@@ -356,8 +359,8 @@ export default function DraftPage() {
           <Req
             ok={tpp >= 1}
             label={tpp >= 1
-              ? `${tpp} teams per player (${filteredTeams.length} total)`
-              : `Not enough teams — need at least ${players.length} (have ${filteredTeams.length})`
+              ? `${TEAMS_PER_PLAYER} teams per player (${filteredTeams.length} total)`
+              : `Need ${players.length * TEAMS_PER_PLAYER} teams for ${TEAMS_PER_PLAYER} each (have ${filteredTeams.length})`
             }
           />
           <Req ok={filteredEuIds.size > 0} label={`European teams: ${filteredEuIds.size}`} />
