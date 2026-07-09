@@ -1,14 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
-import type { Profile, League, Competition } from '@/lib/supabase/types'
+import type { League, Competition } from '@/lib/supabase/types'
 
 export default function CompetitionsSettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [league, setLeague] = useState<League | null>(null)
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,14 +20,9 @@ export default function CompetitionsSettingsPage() {
 
   async function loadData() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-    const [{ data: prof }, { data: leagues }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false }).limit(1),
-    ])
-    setProfile(prof)
-    const lg = leagues?.[0] ?? null
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId) { setLoading(false); return }
+    const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (lg) {
       const { data: comps } = await supabase.from('competitions').select('*').eq('league_id', lg.id).order('display_order')
@@ -46,10 +41,10 @@ export default function CompetitionsSettingsPage() {
   const domestic = competitions.filter(c => c.competition_type === 'domestic_league')
   const european = competitions.filter(c => c.competition_type === 'european')
 
-  if (loading) return <AppShell profile={null} title="Competitions" backHref="/settings"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="Competitions" backHref="/settings"><PageLoader /></AppShell>
 
   return (
-    <AppShell profile={profile} title="Competitions" backHref="/settings">
+    <AppShell title="Competitions" backHref="/settings">
       {!league ? (
         <EmptyState icon="🏆" title="Create a league first" />
       ) : (

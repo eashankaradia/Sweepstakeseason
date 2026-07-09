@@ -1,12 +1,13 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { PageLoader } from '@/components/ui/LoadingSpinner'
-import type { Profile, League } from '@/lib/supabase/types'
+import type { League } from '@/lib/supabase/types'
 import { DEFAULT_SCORING_RULES } from '@/lib/scoring'
 
 const DEFAULT_COMPETITIONS = [
@@ -25,7 +26,6 @@ function generateCode(): string {
 }
 
 export default function LeagueSettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [leagues, setLeagues] = useState<League[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -41,13 +41,7 @@ export default function LeagueSettingsPage() {
 
   async function loadData() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-    const [{ data: prof }, { data: lgs }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false }),
-    ])
-    setProfile(prof)
+    const { data: lgs } = await supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false })
     setLeagues(lgs ?? [])
     setLoading(false)
   }
@@ -56,26 +50,15 @@ export default function LeagueSettingsPage() {
     if (!form.name.trim() || !form.season.trim()) return
     setSaving(true)
     setError('')
-
-    const { data: { user } } = await supabase.auth.getUser()
     const access_code = generateCode()
-
     const { data: league, error: lgErr } = await supabase
       .from('sweepstake_leagues')
-      .insert({ name: form.name, season: form.season, created_by: user?.id, access_code })
+      .insert({ name: form.name, season: form.season, created_by: null, access_code })
       .select()
       .maybeSingle()
-
     if (lgErr || !league) { setError(lgErr?.message ?? 'Failed to create league'); setSaving(false); return }
-
-    await supabase
-      .from('competitions')
-      .insert(DEFAULT_COMPETITIONS.map(c => ({ ...c, league_id: league.id, enabled: true })))
-
-    await supabase.from('scoring_rules').insert(
-      DEFAULT_SCORING_RULES.map(r => ({ ...r, league_id: league.id }))
-    )
-
+    await supabase.from('competitions').insert(DEFAULT_COMPETITIONS.map(c => ({ ...c, league_id: league.id, enabled: true })))
+    await supabase.from('scoring_rules').insert(DEFAULT_SCORING_RULES.map(r => ({ ...r, league_id: league.id })))
     setSaving(false)
     setCreating(false)
     loadData()
@@ -87,7 +70,7 @@ export default function LeagueSettingsPage() {
   }
 
   async function regenerateCode(league: League) {
-    if (!confirm('Regenerate the league code? Existing players will need the new code to log in next time.')) return
+    if (!confirm('Regenerate the league code? Update your invite URL after this.')) return
     setRegenerating(league.id)
     const access_code = generateCode()
     await supabase.from('sweepstake_leagues').update({ access_code }).eq('id', league.id)
@@ -95,16 +78,17 @@ export default function LeagueSettingsPage() {
     loadData()
   }
 
-  async function copyCode(code: string, leagueId: string) {
-    await navigator.clipboard.writeText(code)
-    setCopied(leagueId)
+  async function copyInviteLink(league: League) {
+    const url = `${window.location.origin}/join/${league.access_code}`
+    await navigator.clipboard.writeText(url)
+    setCopied(league.id)
     setTimeout(() => setCopied(null), 2000)
   }
 
-  if (loading) return <AppShell profile={null} title="League Setup" backHref="/settings"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="League Setup" backHref="/settings"><PageLoader /></AppShell>
 
   return (
-    <AppShell profile={profile} title="League Setup" backHref="/settings">
+    <AppShell title="League Setup" backHref="/settings">
       {leagues.map(lg => (
         <Card key={lg.id} className="mb-3">
           <div className="flex items-center justify-between mb-2">
@@ -117,78 +101,59 @@ export default function LeagueSettingsPage() {
             </Badge>
           </div>
 
-          {/* League code */}
           <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] px-3 py-2 mb-3">
-            <p className="text-[10px] text-[var(--text-muted)] mb-1">League code — share with players to let them sign in</p>
+            <p className="text-[10px] text-[var(--text-muted)] mb-1">Invite link — share with players</p>
             <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-lg tracking-widest text-[var(--text-primary)] flex-1">
-                {lg.access_code ?? '—'}
+              <span className="font-mono text-xs text-[var(--text-secondary)] flex-1 truncate">
+                /join/{lg.access_code ?? '—'}
               </span>
               {lg.access_code && (
                 <button
-                  onClick={() => copyCode(lg.access_code!, lg.id)}
-                  className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  onClick={() => copyInviteLink(lg)}
+                  className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
                 >
-                  {copied === lg.id ? 'Copied!' : 'Copy'}
+                  {copied === lg.id ? 'Copied!' : 'Copy link'}
                 </button>
               )}
               <button
                 onClick={() => regenerateCode(lg)}
                 disabled={regenerating === lg.id}
-                className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 shrink-0"
               >
-                {regenerating === lg.id ? '...' : 'Regenerate'}
+                {regenerating === lg.id ? '...' : 'Regen'}
               </button>
             </div>
           </div>
 
           <div className="flex gap-2 flex-wrap">
             {lg.status === 'setup' && (
-              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>
-                Set active
-              </Button>
+              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>Set active</Button>
             )}
             {lg.status === 'active' && (
-              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>
-                Mark completed
-              </Button>
+              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>Mark completed</Button>
             )}
-            {lg.draft_locked && (
-              <Badge variant="info">Draft locked</Badge>
-            )}
+            {lg.draft_locked && <Badge variant="info">Draft locked</Badge>}
           </div>
         </Card>
       ))}
 
       {!creating ? (
-        <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">
-          + Create new league
-        </Button>
+        <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">+ Create new league</Button>
       ) : (
         <Card>
           <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-3">New league</h3>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-[var(--text-secondary)] block mb-1">League name</label>
-              <input
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Sweepstake 2026/27"
-              />
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Sweepstake 2026/27" />
             </div>
             <div>
               <label className="text-xs text-[var(--text-secondary)] block mb-1">Season</label>
-              <input
-                value={form.season}
-                onChange={e => setForm(f => ({ ...f, season: e.target.value }))}
-                placeholder="e.g. 2026/2027"
-              />
+              <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} placeholder="e.g. 2026/2027" />
             </div>
           </div>
           {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
-          <p className="text-xs text-[var(--text-secondary)] mt-2">
-            Creates the league with default competitions and a random join code.
-          </p>
+          <p className="text-xs text-[var(--text-secondary)] mt-2">Creates the league with default competitions and a random join code.</p>
           <div className="flex gap-2 mt-3">
             <Button onClick={createLeague} loading={saving} className="flex-1">Create</Button>
             <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>

@@ -1,20 +1,18 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
-import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { PLAYER_COLORS } from '@/lib/utils'
-import type { Profile, League, Player } from '@/lib/supabase/types'
+import type { League, Player } from '@/lib/supabase/types'
 
 export default function PlayersSettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [league, setLeague] = useState<League | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
-  const [allUsers, setAllUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -28,16 +26,9 @@ export default function PlayersSettingsPage() {
 
   async function loadData() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-    const [{ data: prof }, { data: leagues }, { data: profs }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false }).limit(1),
-      supabase.from('profiles').select('*'),
-    ])
-    setProfile(prof)
-    setAllUsers(profs ?? [])
-    const lg = leagues?.[0] ?? null
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId) { setLoading(false); return }
+    const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (lg) {
       const { data: pl } = await supabase.from('players').select('*').eq('league_id', lg.id).order('position', { nullsFirst: false })
@@ -67,11 +58,6 @@ export default function PlayersSettingsPage() {
     loadData()
   }
 
-  async function linkUser(playerId: string, userId: string | null) {
-    await supabase.from('players').update({ user_id: userId }).eq('id', playerId)
-    loadData()
-  }
-
   function startEdit(player: Player) {
     setForm({ name: player.name, email: player.email ?? '', color: player.color ?? PLAYER_COLORS[0] })
     setEditingId(player.id)
@@ -84,10 +70,10 @@ export default function PlayersSettingsPage() {
     setForm({ name: '', email: '', color: PLAYER_COLORS[players.length % PLAYER_COLORS.length] })
   }
 
-  if (loading) return <AppShell profile={null} title="Players" backHref="/settings"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="Players" backHref="/settings"><PageLoader /></AppShell>
 
   return (
-    <AppShell profile={profile} title="Players" backHref="/settings">
+    <AppShell title="Players" backHref="/settings">
       {!league ? (
         <EmptyState icon="🏆" title="Create a league first" />
       ) : (
@@ -111,7 +97,7 @@ export default function PlayersSettingsPage() {
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Player name" />
                 </div>
                 <div>
-                  <label className="text-xs text-[var(--text-secondary)] block mb-1">Email (for login)</label>
+                  <label className="text-xs text-[var(--text-secondary)] block mb-1">Email (optional)</label>
                   <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="player@example.com" />
                 </div>
                 <div>
@@ -138,13 +124,8 @@ export default function PlayersSettingsPage() {
                   <Avatar name={player.name} color={player.color} size="md" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm text-[var(--text-primary)] truncate">{player.name}</p>
-                    <p className="text-xs text-[var(--text-secondary)] truncate">{player.email ?? 'No email'}</p>
+                    {player.email && <p className="text-xs text-[var(--text-secondary)] truncate">{player.email}</p>}
                   </div>
-                  {player.user_id ? (
-                    <Badge variant="success" className="text-[9px] shrink-0">Linked</Badge>
-                  ) : (
-                    <Badge variant="muted" className="text-[9px] shrink-0">Unlinked</Badge>
-                  )}
                   <div className="flex gap-1 shrink-0">
                     <button onClick={() => startEdit(player)} className="w-7 h-7 rounded-lg bg-[var(--border)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -153,15 +134,6 @@ export default function PlayersSettingsPage() {
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
                     </button>
                   </div>
-                </div>
-                <div className="mt-2">
-                  <label className="text-[10px] text-[var(--text-muted)] block mb-1">Link to account</label>
-                  <select value={player.user_id ?? ''} onChange={e => linkUser(player.id, e.target.value || null)} className="!py-1 text-xs">
-                    <option value="">Not linked</option>
-                    {allUsers.map(u => (
-                      <option key={u.id} value={u.id}>{u.display_name || u.email}</option>
-                    ))}
-                  </select>
                 </div>
               </Card>
             ))}

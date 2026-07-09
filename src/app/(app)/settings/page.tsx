@@ -1,8 +1,8 @@
-import { getProfile, getActiveLeague } from '@/lib/data'
+import { cookies } from 'next/headers'
+import { getLeagueById } from '@/lib/data'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
 const settingsSections = [
@@ -15,14 +15,12 @@ const settingsSections = [
 ]
 
 export default async function SettingsPage() {
-  const [profile, league] = await Promise.all([getProfile(), getActiveLeague()])
-
-  if (!profile?.is_admin) {
-    redirect('/dashboard')
-  }
+  const cookieStore = await cookies()
+  const leagueId = cookieStore.get('ss_league')?.value
+  const league = leagueId ? await getLeagueById(leagueId) : null
 
   return (
-    <AppShell profile={profile} title="Settings">
+    <AppShell title="Settings">
       {league && (
         <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
           <div className="flex-1 min-w-0">
