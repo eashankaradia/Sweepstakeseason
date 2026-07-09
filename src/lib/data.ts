@@ -1,11 +1,9 @@
 import { createClient } from './supabase/server'
-import type { League, Profile, Player, Competition, Team, PlayerTeamAssignment, Fixture, ScoringRule, PlayerScore, TeamScore, DraftRun } from './supabase/types'
+import type { League, Player, Competition, Team, PlayerTeamAssignment, Fixture, ScoringRule, PlayerScore, TeamScore, DraftRun } from './supabase/types'
 
-export async function getProfile(): Promise<Profile | null> {
+export async function getLeagueById(id: string): Promise<League | null> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+  const { data } = await supabase.from('sweepstake_leagues').select('*').eq('id', id).maybeSingle()
   return data
 }
 
@@ -58,7 +56,6 @@ export async function getTeamsForLeague(leagueId: string): Promise<(Team & { com
     .from('team_competitions')
     .select(`competition_id, teams (*), competitions (name, short_name)`)
     .eq('league_id', leagueId)
-
   if (!data) return []
   const seen = new Set<string>()
   const result: (Team & { competition_id: string; competition_name: string })[] = []
@@ -86,12 +83,10 @@ export async function getFixtures(leagueId: string, opts?: { competitionId?: str
     .from('fixtures')
     .select(`*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
     .eq('league_id', leagueId)
-
   if (opts?.competitionId) q = q.eq('competition_id', opts.competitionId)
   if (opts?.teamId) q = q.or(`home_team_id.eq.${opts.teamId},away_team_id.eq.${opts.teamId}`)
   if (opts?.status) q = q.eq('status', opts.status)
   if (opts?.limit) q = q.limit(opts.limit)
-
   q = q.order('kickoff_time', { ascending: true })
   const { data } = await q
   return (data ?? []) as any[]

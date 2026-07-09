@@ -1,38 +1,34 @@
-import { createClient } from '@/lib/supabase/server'
-import { getProfile, getActiveLeague, getPlayers, getPlayerScores, getAssignments, getFixtures } from '@/lib/data'
+import { cookies } from 'next/headers'
+import { getLeagueById, getPlayers, getPlayerScores, getAssignments, getFixtures } from '@/lib/data'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { EmptyState } from '@/components/ui/LoadingSpinner'
-import { getOrdinal, formatDateTime } from '@/lib/utils'
+import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
 
 export default async function DashboardPage() {
-  const [profile, league] = await Promise.all([getProfile(), getActiveLeague()])
+  const cookieStore = await cookies()
+  const leagueId = cookieStore.get('ss_league')?.value
+  const league = leagueId ? await getLeagueById(leagueId) : null
 
   if (!league) {
     return (
-      <AppShell profile={profile}>
+      <AppShell>
         <EmptyState
           icon="🏆"
           title="No league set up yet"
-          description="An admin needs to create the sweepstake league first."
+          description="Create a league in settings to get started."
           action={
-            profile?.is_admin ? (
-              <Link href="/settings/league" className="text-[var(--accent)] text-sm font-medium hover:underline">
-                Create a league →
-              </Link>
-            ) : null
+            <Link href="/settings/league" className="text-[var(--accent)] text-sm font-medium hover:underline">
+              Create a league →
+            </Link>
           }
         />
       </AppShell>
     )
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
   const [players, playerScores, assignments, recentFixtures, upcomingFixtures] = await Promise.all([
     getPlayers(league.id),
@@ -42,17 +38,11 @@ export default async function DashboardPage() {
     getFixtures(league.id, { status: 'scheduled', limit: 5 }),
   ])
 
-  const myPlayer = players.find(p => p.user_id === user?.id)
-  const myScore = playerScores.find(s => s.player_id === myPlayer?.id)
-  const myAssignments = myPlayer ? assignments.filter(a => a.player_id === myPlayer.id) : []
-  const myRank = myPlayer ? playerScores.findIndex(s => s.player_id === myPlayer.id) + 1 : null
-
   const leader = playerScores[0]
-
   const draftDone = assignments.length > 0
 
   return (
-    <AppShell profile={profile}>
+    <AppShell>
       <div className="mb-4">
         <div className="flex items-center justify-between">
           <div>
@@ -64,33 +54,6 @@ export default async function DashboardPage() {
           </Badge>
         </div>
       </div>
-
-      {myPlayer && (
-        <Card className="mb-3 bg-gradient-to-br from-[var(--accent)]/20 to-[var(--bg-card)] border-[var(--accent)]/30">
-          <div className="flex items-center gap-3">
-            <Avatar name={myPlayer.name} color={myPlayer.color} size="lg" />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-[var(--text-primary)]">{myPlayer.name}</p>
-              <p className="text-xs text-[var(--text-secondary)]">Your position</p>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-[var(--text-primary)]">
-                {myRank ? getOrdinal(myRank) : '—'}
-              </div>
-              <div className="text-xs text-[var(--text-secondary)]">
-                {myScore?.total_points ?? 0} pts
-              </div>
-            </div>
-          </div>
-          {myAssignments.length > 0 && (
-            <div className="mt-3 flex gap-1.5 flex-wrap">
-              {myAssignments.map(a => (
-                <TeamCrest key={a.id} team={(a as any).team} size="sm" />
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
 
       {leader && (leader as any).player && (
         <Card className="mb-3">
@@ -136,13 +99,11 @@ export default async function DashboardPage() {
           <div className="text-center py-2">
             <p className="text-sm font-medium text-[var(--text-primary)]">Draft pending</p>
             <p className="text-xs text-[var(--text-secondary)] mt-1">
-              {league.draft_locked ? 'Draft is locked' : 'Admin needs to run the draft'}
+              {league.draft_locked ? 'Draft is locked' : 'Go to settings to run the draft'}
             </p>
-            {profile?.is_admin && !league.draft_locked && (
-              <Link href="/draft" className="inline-block mt-2 text-xs text-[var(--accent)] font-medium hover:underline">
-                Go to draft room →
-              </Link>
-            )}
+            <Link href="/draft" className="inline-block mt-2 text-xs text-[var(--accent)] font-medium hover:underline">
+              Go to draft room →
+            </Link>
           </div>
         </Card>
       )}

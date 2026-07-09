@@ -1,25 +1,24 @@
-import { getProfile, getActiveLeague, getPlayers, getPlayerScores, getAssignments } from '@/lib/data'
+import { cookies } from 'next/headers'
+import { getLeagueById, getPlayers, getPlayerScores, getAssignments } from '@/lib/data'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/LoadingSpinner'
-import { createClient } from '@/lib/supabase/server'
 
 export default async function StandingsPage() {
-  const [profile, league] = await Promise.all([getProfile(), getActiveLeague()])
+  const cookieStore = await cookies()
+  const leagueId = cookieStore.get('ss_league')?.value
+  const league = leagueId ? await getLeagueById(leagueId) : null
 
   if (!league) {
     return (
-      <AppShell profile={profile} title="Standings">
+      <AppShell title="Standings">
         <EmptyState icon="🏆" title="No league yet" description="Set up a league to see standings." />
       </AppShell>
     )
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
   const [players, playerScores, assignments] = await Promise.all([
     getPlayers(league.id),
@@ -39,14 +38,13 @@ export default async function StandingsPage() {
       draws: score?.draws ?? 0,
       losses: score?.losses ?? 0,
       played: score?.matches_played ?? 0,
-      isMe: player.user_id === user?.id,
     }
   }).sort((a, b) => b.totalPoints - a.totalPoints)
 
   const hasDraft = assignments.length > 0
 
   return (
-    <AppShell profile={profile} title="Standings">
+    <AppShell title="Standings">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-[var(--text-secondary)]">{league.season}</p>
         <Badge variant={league.status === 'active' ? 'success' : 'warning'}>
@@ -59,10 +57,7 @@ export default async function StandingsPage() {
       ) : (
         <div className="space-y-2">
           {standings.map((entry, idx) => (
-            <Card
-              key={entry.player.id}
-              className={entry.isMe ? 'border-[var(--accent)]/40 bg-[var(--accent)]/5' : ''}
-            >
+            <Card key={entry.player.id}>
               <div className="flex items-center gap-3">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                   idx === 0 ? 'bg-amber-500/20 text-amber-400' :
@@ -76,16 +71,9 @@ export default async function StandingsPage() {
                 <Avatar name={entry.player.name} color={entry.player.color} size="md" />
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-sm text-[var(--text-primary)] truncate">
-                      {entry.player.name}
-                    </span>
-                    {entry.isMe && (
-                      <span className="text-[9px] font-semibold text-[var(--accent)] bg-[var(--accent)]/15 px-1 py-0.5 rounded">
-                        YOU
-                      </span>
-                    )}
-                  </div>
+                  <span className="font-medium text-sm text-[var(--text-primary)] truncate block">
+                    {entry.player.name}
+                  </span>
                   <div className="flex items-center gap-2 mt-0.5">
                     {hasDraft ? (
                       <>
