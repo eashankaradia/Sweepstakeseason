@@ -1,0 +1,129 @@
+'use client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { AppShell } from '@/components/layout/AppShell'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { PageLoader } from '@/components/ui/LoadingSpinner'
+import type { Profile, League } from '@/lib/supabase/types'
+import { DEFAULT_SCORING_RULES } from '@/lib/scoring'
+
+const DEFAULT_COMPETITIONS = [
+  { name: 'Premier League',    short_name: 'PL',  competition_type: 'domestic_league', country: 'England', display_order: 1 },
+  { name: 'La Liga',           short_name: 'LL',  competition_type: 'domestic_league', country: 'Spain',   display_order: 2 },
+  { name: 'Bundesliga',        short_name: 'BL',  competition_type: 'domestic_league', country: 'Germany', display_order: 3 },
+  { name: 'Serie A',           short_name: 'SA',  competition_type: 'domestic_league', country: 'Italy',   display_order: 4 },
+  { name: 'Champions League',  short_name: 'UCL', competition_type: 'european',        country: null,      display_order: 5 },
+  { name: 'Europa League',     short_name: 'UEL', competition_type: 'european',        country: null,      display_order: 6 },
+  { name: 'Conference League', short_name: 'ECL', competition_type: 'european',        country: null,      display_order: 7 },
+] as const
+
+export default function LeagueSettingsPage() {
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [leagues, setLeagues] = useState<League[]>([])
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState({ name: 'Sweepstake 2026/27', season: '2026/2027' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const supabase = createClient()
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setLoading(false); return }
+    const [{ data: prof }, { data: lgs }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+      supabase.from('sweepstake_leagues').select('*').order('created_at', { ascending: false }),
+    ])
+    setProfile(prof)
+    setLeagues(lgs ?? [])
+    setLoading(false)
+  }
+
+  async function createLeague() {
+    if (!form.name.trim() || !form.season.trim()) return
+    setSaving(true)
+    setError('')
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: league, error: lgErr } = await supabase
+      .from('sweepstake_leagues')
+      .insert({ name: form.name, season: form.season, created_by: user?.id })
+      .select()
+      .maybeSingle()
+    if (lgErr || !league) { setError(lgErr?.message ?? 'Failed to create league'); setSaving(false); return }
+    await supabase.from('competitions').insert(
+      DEFAULT_COMPETITIONS.map(c => ({ ...c, league_id: league.id, enabled: true }))
+    )
+    await supabase.from('scoring_rules').insert(
+      DEFAULT_SCORING_RULES.map(r => ({ ...r, league_id: league.id }))
+    )
+    setSaving(false)
+    setCreating(false)
+    loadData()
+  }
+
+  async function updateStatus(league: League, status: League['status']) {
+    await supabase.from('sweepstake_leagues').update({ status }).eq('id', league.id)
+    loadData()
+  }
+
+  if (loading) return <AppShell profile={null} title="League Setup" backHref="/settings"><PageLoader /></AppShell>
+
+  return (
+    <AppShell profile={profile} title="League Setup" backHref="/settings">
+      {leagues.map(lg => (
+        <Card key={lg.id} className="mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="font-semibold text-sm text-[var(--text-primary)]">{lg.name}</p>
+              <p className="text-xs text-[var(--text-secondary)]">{lg.season}</p>
+            </div>
+            <Badge variant={lg.status === 'active' ? 'success' : lg.status === 'setup' ? 'warning' : 'muted'}>
+              {lg.status}
+            </Badge>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {lg.status === 'setup' && (
+              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>Set active</Button>
+            )}
+            {lg.status === 'active' && (
+              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>Mark completed</Button>
+            )}
+            {lg.draft_locked && <Badge variant="info">Draft locked</Badge>}
+          </div>
+        </Card>
+      ))}
+
+      {!creating ? (
+        <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">+ Create new league</Button>
+      ) : (
+        <Card>
+          <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-3">New league</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] block mb-1">League name</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Sweepstake 2026/27" />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] block mb-1">Season</label>
+              <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} placeholder="e.g. 2026/2027" />
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          <p className="text-xs text-[var(--text-secondary)] mt-2">
+            Creates the league with default competitions (PL, LL, BL, SA, UCL, UEL, ECL) and scoring rules.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button onClick={createLeague} loading={saving} className="flex-1">Create</Button>
+            <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
+          </div>
+        </Card>
+      )}
+    </AppShell>
+  )
+}
