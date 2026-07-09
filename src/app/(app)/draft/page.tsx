@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { formatDate } from '@/lib/utils'
+import { isAdminUser } from '@/lib/admin'
 import type { League, Player, Team, Competition, DraftRun } from '@/lib/supabase/types'
 
 const TEAMS_PER_PLAYER = 5
@@ -30,6 +31,7 @@ export default function DraftPage() {
   const [saving, setSaving] = useState(false)
   const [locking, setLocking] = useState(false)
   const [error, setError] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const initialized = useRef(false)
 
   const supabase = createClient()
@@ -80,18 +82,26 @@ export default function DraftPage() {
       { data: draftRunsData },
       { data: assignmentsData },
       { data: compsData },
+      { data: authData },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position'),
       supabase.from('team_competitions').select('team_id, competition_id, teams(*)').eq('league_id', lg.id),
       supabase.from('draft_runs').select('*').eq('league_id', lg.id).order('run_number', { ascending: false }),
       supabase.from('player_team_assignments').select('*, teams(*), players(*)').eq('league_id', lg.id),
-      supabase.from('competitions').select('*').eq('league_id', lg.id).order('display_order'),
+      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
+      supabase.auth.getUser(),
     ])
+
+    const user = authData?.user ?? null
+    const { data: profile } = user
+      ? await supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+      : { data: null }
 
     setPlayers(playersData ?? [])
     setDraftRuns(draftRunsData ?? [])
     setCurrentAssignments(assignmentsData ?? [])
     setCompetitions(compsData ?? [])
+    setIsAdmin(isAdminUser(user, profile))
 
     const map = new Map<string, Team[]>()
     for (const row of (tcData ?? []) as any[]) {
@@ -122,6 +132,7 @@ export default function DraftPage() {
   }
 
   function toggleComp(compId: string) {
+    if (!isAdmin) return
     const teams = compTeamMap.get(compId) ?? []
     const allSelected = teams.every(t => selectedTeamIds.has(t.id))
     setSelectedTeamIds(prev => {
@@ -134,6 +145,7 @@ export default function DraftPage() {
   }
 
   function toggleTeam(teamId: string) {
+    if (!isAdmin) return
     setSelectedTeamIds(prev => {
       const next = new Set(prev)
       if (next.has(teamId)) next.delete(teamId)
@@ -153,6 +165,7 @@ export default function DraftPage() {
   }
 
   function selectAll() {
+    if (!isAdmin) return
     const all = new Set<string>()
     for (const [, teams] of compTeamMap) teams.forEach(t => all.add(t.id))
     setSelectedTeamIds(all)
@@ -160,11 +173,13 @@ export default function DraftPage() {
   }
 
   function deselectAll() {
+    if (!isAdmin) return
     setSelectedTeamIds(new Set())
     setAllocations([])
   }
 
   async function handleGenerate() {
+    if (!isAdmin) return
     setError('')
     setGenerating(true)
     try {
@@ -185,6 +200,7 @@ export default function DraftPage() {
   }
 
   async function handleSave() {
+    if (!isAdmin) return
     if (!league || allocations.length === 0) return
     setSaving(true)
     setError('')
@@ -201,6 +217,7 @@ export default function DraftPage() {
   }
 
   async function handleLock() {
+    if (!isAdmin) return
     if (!league) return
     setLocking(true)
     const latestRun = draftRuns[0]
@@ -211,6 +228,7 @@ export default function DraftPage() {
   }
 
   async function handleUnlock() {
+    if (!isAdmin) return
     if (!league) return
     await supabase.from('sweepstake_leagues').update({ draft_locked: false, draft_locked_at: null }).eq('id', league.id)
     loadData()
@@ -239,6 +257,7 @@ export default function DraftPage() {
         </Badge>
         <span className="text-xs text-[var(--text-secondary)]">{draftRuns.length > 0 ? `Run #${draftRuns[0].run_number}` : 'No runs yet'}</span>
         {draftRuns.length > 0 && <span className="text-xs text-[var(--text-muted)]">· {formatDate(draftRuns[0].generated_at)}</span>}
+        {!isAdmin && <Badge variant="muted" className="ml-auto text-[9px]">View only</Badge>}
       </div>
 
       {competitions.length > 0 && (
@@ -246,9 +265,9 @@ export default function DraftPage() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm text-[var(--text-primary)]">Teams to draft from</h3>
             <div className="flex gap-2">
-              <button onClick={selectAll} disabled={isLocked} className="text-[10px] text-[var(--accent)] disabled:opacity-40">All</button>
+              <button onClick={selectAll} disabled={isLocked || !isAdmin} className="text-[10px] text-[var(--accent)] disabled:opacity-40">All</button>
               <span className="text-[10px] text-[var(--text-muted)]">/</span>
-              <button onClick={deselectAll} disabled={isLocked} className="text-[10px] text-[var(--text-muted)] disabled:opacity-40">None</button>
+              <button onClick={deselectAll} disabled={isLocked || !isAdmin} className="text-[10px] text-[var(--text-muted)] disabled:opacity-40">None</button>
             </div>
           </div>
 
@@ -276,8 +295,8 @@ export default function DraftPage() {
 
                     {/* Competition-level checkbox */}
                     <button
-                      onClick={() => { if (!isLocked) toggleComp(comp.id) }}
-                      disabled={isLocked}
+                      onClick={() => { if (!isLocked && isAdmin) toggleComp(comp.id) }}
+                      disabled={isLocked || !isAdmin}
                       className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                         state === 'all' ? 'bg-[var(--accent)] border-[var(--accent)]'
                         : state === 'some' ? 'bg-[var(--accent)]/30 border-[var(--accent)]'
@@ -317,10 +336,10 @@ export default function DraftPage() {
                         return (
                           <label key={team.id} className="flex items-center gap-2 py-1 cursor-pointer">
                             <div
-                              onClick={() => { if (!isLocked) toggleTeam(team.id) }}
+                              onClick={() => { if (!isLocked && isAdmin) toggleTeam(team.id) }}
                               className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
                                 checked ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)] bg-transparent'
-                              } ${isLocked ? 'opacity-40 cursor-default' : ''}`}
+                              } ${isLocked || !isAdmin ? 'opacity-40 cursor-default' : ''}`}
                             >
                               {checked && (
                                 <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4l2 2 3-3" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -364,11 +383,16 @@ export default function DraftPage() {
             }
           />
           <Req ok={filteredEuIds.size > 0} label={`European teams: ${filteredEuIds.size}`} />
+          <Req ok={isAdmin} label={isAdmin ? 'Admin controls enabled' : 'Only the admin can control the draft'} />
           <Req ok={!isLocked} label={isLocked ? 'Draft locked — unlock to regenerate' : 'Draft unlocked'} />
         </div>
       </Card>
 
-      {!isLocked ? (
+      {!isAdmin ? (
+        <Card className="mb-4 !p-3 text-center text-sm text-[var(--text-secondary)]">
+          The draft room is view-only for players. Eashan can generate, save, and lock the draw.
+        </Card>
+      ) : !isLocked ? (
         <div className="space-y-2 mb-4">
           <Button onClick={handleGenerate} loading={generating} className="w-full" variant="secondary">🎲 Generate new draft</Button>
           {allocations.length > 0 && <Button onClick={handleSave} loading={saving} className="w-full">💾 Save this allocation</Button>}

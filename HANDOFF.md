@@ -147,17 +147,23 @@ Known auth gotcha: users created by raw SQL need these token fields to be empty 
 - `src/lib/scoring.ts` already implements 3 points for a win, 1 for a draw, and 0 for a loss.
 - `src/app/(app)/my-teams/page.tsx` is a client-side player/team performance view with filter chips by player.
 - `src/app/(app)/standings/page.tsx` is a compact table-style standings screen.
+- `src/app/(app)/fixtures/page.tsx` has admin-only manual add/result controls plus an admin-only ESPN Sync button.
+- `src/app/(app)/draft/page.tsx` is view-only for normal players; only admin users can generate, save, lock, unlock, or change the draft pool.
+- Admin detection currently allows `profiles.is_admin = true` and the known Eashan emails in `src/lib/admin.ts`; Eashan's two existing profile rows have also been updated to `is_admin = true`.
+- Missing crest URLs for Como and SV Elversberg were written to Supabase and also added as component fallbacks in `TeamCrest`.
+- ESPN fixture seed inserted 865 fixtures on 2026-07-09 for the current league. UEFA/FA Cup/Copa del Rey returned zero 2026/27 events at that moment because ESPN had not published those future schedules yet.
 - Existing Supabase data may still include Bundesliga from prior setup; remove or disable it in the database before the final draft if needed.
 
 ## Things Not Yet Done
 
-1. Fixture import: no robust fixture importer/API integration is wired up yet.
+1. Fixture import: ESPN manual sync exists, but there is no scheduled/cron sync yet.
 2. Scoring engine: no cron job, webhook, or scheduled job updates scores from live results yet.
 3. Vercel deployment: app needs deployment from `main`.
-4. Domestic cups: evaluate API support before adding FA Cup, EFL Cup, Copa del Rey, and Coppa Italia fixtures.
-5. Existing database cleanup: remove/disable Bundesliga for the DEGENERATES league if it is still enabled.
+4. Domestic cups: competition rows exist; rerun ESPN sync once FA Cup/Copa del Rey schedules are published.
+5. Existing database cleanup: Bundesliga has been disabled in Supabase, but old team rows/team_competitions still exist and can be removed later if desired.
 6. Run and lock the draft after the final competition/team pool is confirmed.
 7. Onboarding should be checked end to end for new signups.
+8. ESPN importer should eventually recalculate scores automatically when completed fixtures are synced, instead of relying on manual result entry.
 
 ## Git Workflow Reminder
 
@@ -192,3 +198,7 @@ Some Codex/agent environments route outbound HTTPS through a proxy, and external
 | 2026-07-09 | Reworked My Teams into a player-filterable team performance view |
 | 2026-07-09 | Made Standings more compact with a table-style mobile layout |
 | 2026-07-09 | Tested ESPN public soccer endpoints as a no-key fixture source for league, UEFA, and cup slugs |
+| 2026-07-09 | Added admin-only ESPN fixture sync endpoint and Fixtures page controls |
+| 2026-07-09 | Seeded 865 ESPN fixtures into Supabase for the active league |
+| 2026-07-09 | Filled Como and SV Elversberg crest gaps in Supabase and TeamCrest fallback mapping |
+| 2026-07-09 | Made Draft Room controls admin-only while keeping the draw visible to players |
