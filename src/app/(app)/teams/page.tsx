@@ -62,24 +62,47 @@ export default async function TeamsPage() {
         <EmptyState icon="⚽" title="No teams assigned" description="Enable competitions and run the draft to see teams here." />
       ) : (
         <div className="space-y-5">
-          {sortedCompetitions.map(({ competition, teams }) => (
-            <div key={competition.id}>
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant={competition.competition_type === 'european' ? 'purple' : 'default'}>
-                  {competition.short_name}
-                </Badge>
-                <span className="text-xs text-[var(--text-secondary)]">{teams.length} teams</span>
-              </div>
-              <div className="space-y-1.5">
-                {teams.map(team => (
-                  <Card key={team.id} className="!p-3">
-                    <div className="flex items-center gap-2.5">
+          {sortedCompetitions.map(({ competition, teams }) => {
+            const isEuropean = competition.competition_type === 'european'
+            return (
+              <div key={competition.id}>
+                {/* Competition header */}
+                <div
+                  className="rounded-t-xl border border-b-0 px-3 py-2.5 flex items-center gap-2"
+                  style={{
+                    background: isEuropean ? 'rgba(168,85,247,0.08)' : 'rgba(99,102,241,0.08)',
+                    borderColor: isEuropean ? 'rgba(168,85,247,0.25)' : 'rgba(99,102,241,0.25)',
+                  }}
+                >
+                  <Badge variant={isEuropean ? 'purple' : 'default'} className="font-bold">
+                    {competition.short_name}
+                  </Badge>
+                  <span className="text-xs font-medium text-[var(--text-secondary)] flex-1 truncate">{competition.name}</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">{teams.length} teams</span>
+                </div>
+
+                {/* Team rows */}
+                <div
+                  className="rounded-b-xl border overflow-hidden divide-y divide-[var(--border)]"
+                  style={{
+                    borderColor: isEuropean ? 'rgba(168,85,247,0.25)' : 'rgba(99,102,241,0.25)',
+                  }}
+                >
+                  {teams.map(team => (
+                    <div key={team.id} className="flex items-center gap-2.5 px-3 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] transition-colors">
                       <TeamCrest team={team} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-[var(--text-secondary)]">{team.country}</span>
                           <TierBadge tier={team.tier} />
+                          {team.score && team.score.matches_played > 0 && (
+                            <span className="text-[10px] text-[var(--text-muted)]">
+                              · <span className="text-emerald-400">{team.score.wins}W</span>{' '}
+                              <span className="text-amber-400">{team.score.draws}D</span>{' '}
+                              <span className="text-red-400">{team.score.losses}L</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                       {team.assignedPlayer ? (
@@ -91,22 +114,14 @@ export default async function TeamsPage() {
                           </div>
                         </div>
                       ) : (
-                        <span className="text-[10px] text-[var(--text-muted)]">Unassigned</span>
+                        <span className="text-[10px] text-[var(--text-muted)] shrink-0">Unassigned</span>
                       )}
                     </div>
-                    {team.score && team.score.matches_played > 0 && (
-                      <div className="mt-1.5 flex gap-2 text-[10px]">
-                        <span className="text-emerald-400">{team.score.wins}W</span>
-                        <span className="text-amber-400">{team.score.draws}D</span>
-                        <span className="text-red-400">{team.score.losses}L</span>
-                        <span className="text-[var(--text-muted)]">· {team.score.matches_played} played</span>
-                      </div>
-                    )}
-                  </Card>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </AppShell>

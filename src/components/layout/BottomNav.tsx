@@ -64,14 +64,19 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center gap-1 flex-1 py-2.5 px-1 min-h-[56px]',
-                'text-xs font-medium transition-colors',
+                'flex flex-col items-center justify-center gap-1 flex-1 py-2 px-1 min-h-[56px]',
+                'text-xs font-medium transition-all duration-200',
                 isActive
                   ? 'text-[var(--accent)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               )}
             >
-              {item.icon}
+              <div className={cn(
+                'flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200',
+                isActive ? 'bg-[var(--accent)]/15' : ''
+              )}>
+                {item.icon}
+              </div>
               <span className="text-[10px] leading-none">{item.label}</span>
             </Link>
           )
