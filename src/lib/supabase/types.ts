@@ -121,6 +121,7 @@ export interface Database {
           tier: number
           primary_color: string
           secondary_color: string
+          logo_url: string | null
           created_at: string
         }
         Insert: {
@@ -130,6 +131,7 @@ export interface Database {
           tier?: number
           primary_color?: string
           secondary_color?: string
+          logo_url?: string | null
         }
         Update: {
           name?: string
@@ -138,6 +140,7 @@ export interface Database {
           tier?: number
           primary_color?: string
           secondary_color?: string
+          logo_url?: string | null
         }
       }
       team_competitions: {
