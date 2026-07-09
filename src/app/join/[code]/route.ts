@@ -15,7 +15,15 @@ export async function GET(
     .maybeSingle()
 
   if (!league) {
-    return NextResponse.redirect(new URL('/how-to-join?error=invalid', request.url))
+    return NextResponse.redirect(new URL('/auth/login?error=invalid-code', request.url))
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    await supabase.from('league_memberships').upsert(
+      { user_id: user.id, league_id: league.id, role: 'member' },
+      { onConflict: 'user_id,league_id', ignoreDuplicates: true }
+    )
   }
 
   const response = NextResponse.redirect(new URL('/dashboard', request.url))
