@@ -1,63 +1,34 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [code, setCode] = useState('')
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const router = useRouter()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!username.trim() || !code.trim()) return
+    if (!email.trim()) return
     setLoading(true)
     setError('')
 
     const supabase = createClient()
-    const email = `${username.trim().toLowerCase()}@sweepstake.local`
-    const password = code.trim().toUpperCase()
-
-    // Verify league code against DB (anon-readable)
-    const { data: league } = await supabase
-      .from('sweepstake_leagues')
-      .select('id')
-      .eq('access_code', password)
-      .maybeSingle()
-
-    if (!league) {
-      setError('Invalid league code — check with your admin.')
-      setLoading(false)
-      return
-    }
-
-    // Try sign in for returning users
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (!signInErr) {
-      router.push('/dashboard')
-      router.refresh()
-      return
-    }
-
-    // New user — register them
-    const { error: signUpErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: username.trim() } },
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     })
 
-    if (signUpErr) {
-      setError(signUpErr.message)
-      setLoading(false)
-      return
+    if (err) {
+      setError(err.message)
+    } else {
+      setSent(true)
     }
-
-    router.push('/dashboard')
-    router.refresh()
+    setLoading(false)
   }
 
   return (
@@ -72,54 +43,61 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-          <h2 className="font-semibold text-[var(--text-primary)] mb-1">Join your league</h2>
-          <p className="text-xs text-[var(--text-secondary)] mb-4">
-            Pick a username and enter the code from your admin.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="block text-xs text-[var(--text-secondary)] mb-1">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="e.g. eashan"
-                autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
-                required
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--text-secondary)] mb-1">League code</label>
-              <input
-                type="text"
-                value={code}
-                onChange={e => setCode(e.target.value.toUpperCase())}
-                placeholder="e.g. ABC12345"
-                autoComplete="off"
-                spellCheck={false}
-                required
-                className="w-full font-mono tracking-widest"
-              />
-            </div>
-
-            {error && (
-              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                {error}
+          {sent ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h2 className="font-semibold text-[var(--text-primary)] mb-1">Check your email</h2>
+              <p className="text-sm text-[var(--text-secondary)]">
+                We sent a magic link to <strong className="text-[var(--text-primary)]">{email}</strong>
               </p>
-            )}
+              <button
+                onClick={() => { setSent(false); setEmail('') }}
+                className="mt-4 text-sm text-[var(--accent)] hover:underline"
+              >
+                Use a different email
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="font-semibold text-[var(--text-primary)] mb-1">Sign in</h2>
+              <p className="text-xs text-[var(--text-secondary)] mb-4">
+                Enter your email and we&apos;ll send you a magic link.
+              </p>
 
-            <Button type="submit" loading={loading} className="w-full" size="lg">
-              Join league
-            </Button>
-          </form>
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-xs text-[var(--text-secondary)] mb-1">Email address</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    required
+                    className="w-full"
+                  />
+                </div>
+
+                {error && (
+                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                    {error}
+                  </p>
+                )}
+
+                <Button type="submit" loading={loading} className="w-full" size="lg">
+                  Send magic link
+                </Button>
+              </form>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-[var(--text-muted)] mt-6">
-          Get the league code from your admin.
+          Only invited players can sign in.
         </p>
       </div>
     </div>
