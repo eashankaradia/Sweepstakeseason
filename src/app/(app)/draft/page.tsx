@@ -26,6 +26,7 @@ export default function DraftPage() {
   const [allocations, setAllocations] = useState<DraftAllocation[]>([])
   const [draftRuns, setDraftRuns] = useState<DraftRun[]>([])
   const [currentAssignments, setCurrentAssignments] = useState<any[]>([])
+  const [teamSearch, setTeamSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -64,6 +65,19 @@ export default function DraftPage() {
     return ids
   }, [competitions, compTeamMap])
 
+  // All domestic-league teams that also play in a European competition
+  const domesticTeamsInEurope = useMemo(() => {
+    const ids = new Set<string>()
+    for (const comp of competitions) {
+      if (comp.competition_type === 'domestic_league') {
+        for (const team of compTeamMap.get(comp.id) ?? []) {
+          if (allEuIds.has(team.id)) ids.add(team.id)
+        }
+      }
+    }
+    return ids
+  }, [competitions, compTeamMap, allEuIds])
+
   const tpp = players.length > 0 && filteredTeams.length >= players.length * TEAMS_PER_PLAYER ? TEAMS_PER_PLAYER : 0
   const unusedTeams = players.length > 0 ? filteredTeams.length - players.length * tpp : 0
 
@@ -89,11 +103,10 @@ export default function DraftPage() {
         .from('team_competitions')
         .select('team_id, competition_id, teams(*), competitions!inner(competition_type,enabled)')
         .eq('league_id', lg.id)
-        .eq('competitions.competition_type', 'domestic_league')
         .eq('competitions.enabled', true),
       supabase.from('draft_runs').select('*').eq('league_id', lg.id).order('run_number', { ascending: false }),
       supabase.from('player_team_assignments').select('*, teams(*), players(*)').eq('league_id', lg.id),
-      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).eq('competition_type', 'domestic_league').order('display_order'),
+      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
       supabase.auth.getUser(),
     ])
 
@@ -119,8 +132,13 @@ export default function DraftPage() {
     setCompTeamMap(map)
 
     if (!initialized.current) {
+      // By default, select all domestic_league teams only (EU comps are supplemental)
       const all = new Set<string>()
-      for (const [, teams] of map) teams.forEach(t => all.add(t.id))
+      for (const comp of (compsData ?? [])) {
+        if (comp.competition_type === 'domestic_league') {
+          for (const t of map.get(comp.id) ?? []) all.add(t.id)
+        }
+      }
       setSelectedTeamIds(all)
       initialized.current = true
     }
@@ -261,6 +279,14 @@ export default function DraftPage() {
 
   const totalTeams = Array.from(compTeamMap.values()).reduce((s, t) => s + t.length, 0)
 
+  // Separate competitions by type for display ordering
+  const typeOrder: Record<string, number> = { domestic_league: 0, european: 1, domestic_cup: 2 }
+  const sortedComps = [...competitions].sort((a, b) =>
+    (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
+  )
+
+  const searchLower = teamSearch.toLowerCase().trim()
+
   return (
     <AppShell title="Draft Room">
       <div className="flex items-center gap-2 mb-4">
@@ -283,29 +309,56 @@ export default function DraftPage() {
             </div>
           </div>
 
+          {/* Team search */}
+          <div className="relative mb-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={teamSearch}
+              onChange={e => setTeamSearch(e.target.value)}
+              placeholder="Search teams…"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-[var(--bg)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/60"
+            />
+            {teamSearch && (
+              <button onClick={() => setTeamSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+
           <div className="space-y-1">
-            {competitions.map(comp => {
+            {sortedComps.map(comp => {
               const teams = compTeamMap.get(comp.id) ?? []
               const state = getCompSelectionState(comp.id)
               const isExpanded = expandedCompIds.has(comp.id)
               const selectedCount = teams.filter(t => selectedTeamIds.has(t.id)).length
               const isEu = comp.competition_type === 'european'
+              const isCup = comp.competition_type === 'domestic_cup'
+
+              const visibleTeams = searchLower
+                ? teams.filter(t => t.name.toLowerCase().includes(searchLower) || (t.short_name ?? '').toLowerCase().includes(searchLower))
+                : teams
+
+              if (searchLower && visibleTeams.length === 0) return null
+
+              const showExpanded = isExpanded || !!searchLower
 
               return (
                 <div key={comp.id} className="rounded-lg overflow-hidden">
-                  {/* Competition header */}
                   <div className="flex items-center gap-2 py-1.5">
-                    {/* Expand toggle */}
                     <button
                       onClick={() => toggleExpanded(comp.id)}
                       className="w-5 h-5 flex items-center justify-center text-[var(--text-muted)] shrink-0"
                     >
-                      <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-transform ${showExpanded ? 'rotate-90' : ''}`}>
                         <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
 
-                    {/* Competition-level checkbox */}
                     <button
                       onClick={() => { if (!isLocked && isAdmin) toggleComp(comp.id) }}
                       disabled={isLocked || !isAdmin}
@@ -323,28 +376,29 @@ export default function DraftPage() {
                       )}
                     </button>
 
-                    {/* Badge + name */}
                     <button onClick={() => toggleExpanded(comp.id)} className="flex items-center gap-2 flex-1 text-left">
                       <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                        isEu ? 'bg-purple-500/20 text-purple-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                        isEu ? 'bg-purple-500/20 text-purple-400' : isCup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'
                       }`}>
                         {comp.short_name}
                       </div>
-                      <span className="text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
+                      <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm text-[var(--text-primary)] truncate">{comp.name}</span>
+                        {isEu && <Badge variant="purple" className="text-[8px] px-1 py-0 shrink-0">European</Badge>}
+                        {isCup && <Badge variant="warning" className="text-[8px] px-1 py-0 shrink-0">Cup</Badge>}
+                      </div>
                     </button>
 
-                    <span className={`text-[10px] shrink-0 ${
-                      state === 'none' ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'
-                    }`}>
+                    <span className={`text-[10px] shrink-0 ${state === 'none' ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'}`}>
                       {selectedCount}/{teams.length}
                     </span>
                   </div>
 
-                  {/* Expanded team list */}
-                  {isExpanded && teams.length > 0 && (
+                  {showExpanded && visibleTeams.length > 0 && (
                     <div className="ml-7 mb-2 space-y-0.5">
-                      {teams.sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || a.name.localeCompare(b.name)).map(team => {
+                      {visibleTeams.sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || a.name.localeCompare(b.name)).map(team => {
                         const checked = selectedTeamIds.has(team.id)
+                        const inEurope = !isEu && domesticTeamsInEurope.has(team.id)
                         return (
                           <label key={team.id} className="flex items-center gap-2 py-1 cursor-pointer">
                             <div
@@ -361,10 +415,15 @@ export default function DraftPage() {
                             <span className={`text-xs flex-1 ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                               {team.name}
                             </span>
-                            {(team as any).league_position != null && (
-                              <span className="text-[9px] text-[var(--text-muted)]">#{(team as any).league_position}</span>
-                            )}
-                            {team.tier === 1 && <span className="text-[9px] text-amber-400">★</span>}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {inEurope && (
+                                <span className="text-[9px] text-purple-400 font-medium">★ EU</span>
+                              )}
+                              {team.league_position != null && (
+                                <span className="text-[9px] text-[var(--text-muted)]">#{team.league_position}</span>
+                              )}
+                              {team.tier === 1 && !inEurope && <span className="text-[9px] text-amber-400">★</span>}
+                            </div>
                           </label>
                         )
                       })}
@@ -397,7 +456,7 @@ export default function DraftPage() {
               : `Need ${players.length * TEAMS_PER_PLAYER} teams for ${TEAMS_PER_PLAYER} each (have ${filteredTeams.length})`
             }
           />
-          <Req ok={filteredEuIds.size > 0} label={`European teams: ${filteredEuIds.size}`} />
+          <Req ok={filteredEuIds.size > 0} label={`European teams in pool: ${filteredEuIds.size}`} />
           <Req ok={isAdmin} label={isAdmin ? 'Admin controls enabled' : 'Only the admin can control the draft'} />
           <Req ok={!isLocked} label={isLocked ? 'Draft locked — unlock to regenerate' : 'Draft unlocked'} />
         </div>
@@ -442,19 +501,23 @@ export default function DraftPage() {
               : currentAlloc.map(({ player, teams, euCount }) => ({ name: player.name, color: player.color, teams, euCount, avgPosition: null as number | null }))
             ).map((entry, i) => (
               <Card key={i}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2.5">
                   <Avatar name={entry.name} color={entry.color} size="sm" />
                   <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{entry.name}</span>
                   {entry.avgPosition != null && <span className="text-[10px] text-[var(--text-muted)]">avg pos {entry.avgPosition}</span>}
                   <span className="text-xs text-[var(--text-muted)]">{entry.teams.length} teams</span>
                   {entry.euCount > 0 && <Badge variant="purple" className="text-[9px]">{entry.euCount} EU</Badge>}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {entry.teams.map((team: any) => team && (
-                    <div key={team.id} className="flex items-center gap-1">
+                    <div key={team.id} className="flex items-center gap-1.5">
                       <TeamCrest team={team} size="xs" />
-                      <span className="text-[10px] text-[var(--text-secondary)]">{team.short_name || team.name.split(' ')[0]}</span>
-                      {allEuIds.has(team.id) && <span className="text-[8px] text-purple-400">★</span>}
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-[var(--text-secondary)] leading-none">{team.short_name || team.name.split(' ')[0]}</p>
+                        {allEuIds.has(team.id) && (
+                          <p className="text-[8px] text-purple-400 leading-none mt-0.5">★ EU</p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
