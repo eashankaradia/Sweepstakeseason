@@ -1,1 +1,21 @@
-aW1wb3J0IHR5cGUgeyBNZXRhZGF0YSwgVmlld3BvcnQgfSBmcm9tICduZXh0JwppbXBvcnQgJy4vZ2xvYmFscy5jc3MnCgpleHBvcnQgY29uc3QgbWV0YWRhdGE6IE1ldGFkYXRhID0gewogIHRpdGxlOiAnU3dlZXBzdGFrZSBTZWFzb24nLAogIGRlc2NyaXB0aW9uOiAnMjAyNi8yNyBDbHViIEZvb3RiYWxsIFN3ZWVwc3Rha2UnLAp9CgpleHBvcnQgY29uc3Qgdmlld3BvcnQ6IFZpZXdwb3J0ID0gewogIHdpZHRoOiAnZGV2aWNlLXdpZHRoJywKICBpbml0aWFsU2NhbGU6IDEsCiAgdGhlbWVDb2xvcjogJyMwZjExMTcnLAp9CgpleHBvcnQgZGVmYXVsdCBmdW5jdGlvbiBSb290TGF5b3V0KHsgY2hpbGRyZW4gfTogeyBjaGlsZHJlbjogUmVhY3QuUmVhY3ROb2RlIH0pIHsKICByZXR1cm4gKAogICAgPGh0bWwgbGFuZz0iZW4iPgogICAgICA8Ym9keT57Y2hpbGRyZW59PC9ib2R5PgogICAgPC9odG1sPgogICkKfQo=
+import type { Metadata, Viewport } from 'next'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: 'Sweepstake Season',
+  description: '2026/27 Club Football Sweepstake — Match Centre, Activity Feed & Power-Ups',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0f1117',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
