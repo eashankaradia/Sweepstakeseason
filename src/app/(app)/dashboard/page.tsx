@@ -21,6 +21,8 @@ export default function DashboardPage() {
   const [weeklyPtsMap, setWeeklyPtsMap] = useState<Map<string, number>>(new Map())
   const [formMap, setFormMap] = useState<Map<string, string[]>>(new Map())
   const [posChangeMap, setPosChangeMap] = useState<Map<string, number>>(new Map())
+  const [weekFixtures, setWeekFixtures] = useState<any[]>([])
+  const [nextMyMatch, setNextMyMatch] = useState<any>(null)
   const [myClubsToday, setMyClubsToday] = useState(0)
   const [myUserId, setMyUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -48,6 +50,10 @@ export default function DashboardPage() {
     const today = new Date()
     const todayStr = today.toISOString().substring(0, 10)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = tomorrow.toISOString().substring(0, 10)
+    const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7)
+    const weekEndStr = weekEnd.toISOString().substring(0, 10)
 
     const [
       { data: players },
@@ -57,6 +63,7 @@ export default function DashboardPage() {
       { data: todayFix },
       { data: recent },
       { data: fullActivity },
+      { data: weekFix },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
@@ -80,6 +87,13 @@ export default function DashboardPage() {
         .gte('created_at', thirtyDaysAgo)
         .order('created_at', { ascending: false })
         .limit(300),
+      supabase.from('fixtures')
+        .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+        .eq('league_id', lg.id).eq('status', 'scheduled')
+        .gte('kickoff_time', `${tomorrowStr}T00:00:00`)
+        .lte('kickoff_time', `${weekEndStr}T23:59:59`)
+        .order('kickoff_time')
+        .limit(30),
     ])
 
     // Owner map: team_id → player
@@ -147,7 +161,7 @@ export default function DashboardPage() {
 
     setStandings(rows)
 
-    // My clubs playing today
+    // My clubs playing today + next match
     if (uid) {
       const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
       if (myPlayer) {
@@ -161,11 +175,18 @@ export default function DashboardPage() {
           ...(todayFix ?? []).map((f: any) => f.away_team_id),
         ])
         setMyClubsToday([...todayIds].filter(id => myTeamIds.has(id)).length)
+
+        // Next upcoming match for my clubs
+        const allUpcoming = [...(todayFix ?? []), ...(weekFix ?? [])]
+          .filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
+          .sort((a: any, b: any) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime())
+        setNextMyMatch(allUpcoming[0] ?? null)
       }
     }
 
     setLiveFixtures((live ?? []) as any[])
     setTodayFixtures((todayFix ?? []) as any[])
+    setWeekFixtures((weekFix ?? []) as any[])
     setRecentResults((recent ?? []) as any[])
     setActivityFeed(((fullActivity ?? []) as any[]).slice(0, 5))
     setLoading(false)
@@ -224,6 +245,21 @@ export default function DashboardPage() {
     ...todayFixtures.map((f: any) => f.away_team_id),
   ]).size
 
+  const weekFixtureCount = weekFixtures.length + todayFixtures.length + liveFixtures.length
+
+  // Biggest movers this week
+  const standingsWithWeekly = standings.map(e => ({ ...e, wkPts: weeklyPtsMap.get(e.player.id) ?? 0 }))
+  const topGainer = [...standingsWithWeekly].filter(e => e.wkPts > 0).sort((a, b) => b.wkPts - a.wkPts)[0]
+  const topLoser = [...standingsWithWeekly].filter(e => e.wkPts < 0).sort((a, b) => a.wkPts - b.wkPts)[0]
+
+  // Group week fixtures by day
+  const weekByDay = new Map<string, any[]>()
+  for (const f of weekFixtures) {
+    const day = (f.kickoff_time as string).substring(0, 10)
+    if (!weekByDay.has(day)) weekByDay.set(day, [])
+    weekByDay.get(day)!.push(f)
+  }
+
   return (
     <AppShell
       onTouchStart={handleTouchStart}
@@ -249,7 +285,12 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="font-black text-xl text-[var(--text-primary)] leading-tight">{league.name}</h1>
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{league.season}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-xs text-[var(--text-secondary)]">{league.season}</p>
+            {weekFixtureCount > 0 && (
+              <span className="text-[10px] text-[var(--text-muted)]">· {weekFixtureCount} game{weekFixtureCount !== 1 ? 's' : ''} this week</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Badge variant={league.status === 'active' ? 'success' : 'warning'}>
@@ -284,6 +325,7 @@ export default function DashboardPage() {
           weeklyPts={weeklyPtsMap.get(myEntry.player.id) ?? 0}
           clubsToday={myClubsToday}
           liveCount={liveFixtures.length}
+          nextMatch={nextMyMatch}
         />
       )}
 
@@ -325,6 +367,39 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* Biggest Movers this week */}
+      {hasDraft && (topGainer || topLoser) && (
+        <section className="mb-4">
+          <h2 className="font-bold text-sm text-[var(--text-primary)] mb-2">This Week</h2>
+          <div className={`grid gap-2 ${topGainer && topLoser ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {topGainer && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-2">🚀 Top scorer</p>
+                <div className="flex items-center gap-2">
+                  <Avatar name={topGainer.player.name} color={topGainer.player.color} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{topGainer.player.name.split(' ')[0]}</p>
+                    <p className="text-base font-black text-emerald-400">+{topGainer.wkPts}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {topLoser && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-2">📉 Struggling</p>
+                <div className="flex items-center gap-2">
+                  <Avatar name={topLoser.player.name} color={topLoser.player.color} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{topLoser.player.name.split(' ')[0]}</p>
+                    <p className="text-base font-black text-red-400">{topLoser.wkPts}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Today's fixtures */}
       {(todayFixtures.length > 0) && (
         <section className="mb-4">
@@ -342,6 +417,30 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {todayFixtures.map(f => (
               <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* This week's upcoming fixtures */}
+      {weekFixtures.length > 0 && (
+        <section className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-sm text-[var(--text-primary)]">Coming Up</h2>
+            <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
+          </div>
+          <div className="space-y-3">
+            {[...weekByDay.entries()].map(([day, dayFixtures]) => (
+              <div key={day}>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5">
+                  {new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </p>
+                <div className="space-y-1.5">
+                  {dayFixtures.map((f: any) => (
+                    <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -397,10 +496,10 @@ export default function DashboardPage() {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function MyStandingCard({
-  entry, pos, posDelta, form, weeklyPts, clubsToday, liveCount,
+  entry, pos, posDelta, form, weeklyPts, clubsToday, liveCount, nextMatch,
 }: {
   entry: any; pos: number; posDelta: number; form: string[]
-  weeklyPts: number; clubsToday: number; liveCount: number
+  weeklyPts: number; clubsToday: number; liveCount: number; nextMatch: any
 }) {
   return (
     <div
@@ -454,6 +553,13 @@ function MyStandingCard({
           {clubsToday > 0 && (
             <p className="text-[10px] font-medium mt-1" style={{ color: liveCount > 0 ? '#f87171' : '#fbbf24' }}>
               {liveCount > 0 ? '🔴' : '⚽'} {clubsToday} of your club{clubsToday !== 1 ? 's' : ''} {liveCount > 0 ? 'playing live' : 'playing today'}
+            </p>
+          )}
+          {/* Next match countdown */}
+          {clubsToday === 0 && nextMatch && nextMatch.kickoff_time && (
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              ⏱ {nextMatch.home_team?.short_name || nextMatch.home_team?.name} vs {nextMatch.away_team?.short_name || nextMatch.away_team?.name}{' '}
+              <span className="text-[var(--accent)] font-medium">{formatCountdown(nextMatch.kickoff_time)}</span>
             </p>
           )}
         </div>
@@ -671,4 +777,16 @@ function formatRelativeTime(dateStr: string): string {
   const days = Math.floor(hrs / 24)
   if (days === 1) return 'Yesterday'
   return `${days}d ago`
+}
+
+function formatCountdown(kickoff: string): string {
+  const diff = new Date(kickoff).getTime() - Date.now()
+  if (diff <= 0) return 'now'
+  const totalMins = Math.floor(diff / 60000)
+  if (totalMins < 60) return `in ${totalMins}m`
+  const hrs = Math.floor(totalMins / 60)
+  const mins = totalMins % 60
+  if (hrs < 24) return `in ${hrs}h${mins > 0 ? ` ${mins}m` : ''}`
+  const days = Math.floor(hrs / 24)
+  return `in ${days}d`
 }
