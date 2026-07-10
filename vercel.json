@@ -1,15 +1,1 @@
-{
-  "framework": "nextjs",
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "https://anbiwffpmgxlbrycckxq.supabase.co",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFuYml3ZmZwbWd4bGJyeWNja3hxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTY4MzQsImV4cCI6MjA5OTEzMjgzNH0.2ECjI3JmO-SwMH1VHeJ95ILm3L6b0e3XV3O3EHsEgeM"
-    }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/sync-results",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
+ewogICJmcmFtZXdvcmsiOiAibmV4dGpzIiwKICAiYnVpbGQiOiB7CiAgICAiZW52IjogewogICAgICAiTkVYVF9QVUJMSUNfU1VQQUJBU0VfVVJMIjogImh0dHBzOi8vYW5iaXdmZnBtZ3hsYnJ5Y2NreHEuc3VwYWJhc2UuY28iLAogICAgICAiTkVYVF9QVUJMSUNfU1VQQUJBU0VfQU5PTl9LRVkiOiAiZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1GdVltbDNabVp3YldkNGJHSnllV05qYTNoeElpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzT0RNMU5UWTRNelFzSW1WNGNDSTZNakE1T1RFek1qZ3pOSDAuMkVDakkzSm1PLVd3TUgxVkhlSjk1SUxtM0w2YjBlM1hWM08zRUhzRWdlTSIKICAgIH0KICB9LAogICJjcm9ucyI6IFsKICAgIHsKICAgICAgInBhdGgiOiAiL2FwaS9jcm9uL3N5bmMtcmVzdWx0cyIsCiAgICAgICJzY2hlZHVsZSI6ICIwIDAgKiAqICoiCiAgICB9CiAgXQp9Cg==
