@@ -1,6 +1,6 @@
 # Sweepstake Season — AI Handoff Document
 
-> **For the AI picking this up:** Read this entire document before touching anything. Update the "Current state" and "Completed" sections at the bottom after every task you finish, then commit and push the updated HANDOFF.md alongside your changes. Do the same thing — keep it current so the next agent doesn't have to re-derive anything.
+> **For the AI picking this up:** Read this entire document before touching anything. Update the "Current state" and "Completed" sections at the bottom after every task you finish, then commit and push the updated HANDOFF.md alongside your changes. Do the same thing — keep it current so the next agent doesn't have to re-derive anything. 
 
 ---
 
