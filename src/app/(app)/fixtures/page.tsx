@@ -26,9 +26,11 @@ export default function FixturesPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'results'>('upcoming')
   const [activeComp, setActiveComp] = useState('all')
+  const [compact, setCompact] = useState(false)
   const [adding, setAdding] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncingResults, setSyncingResults] = useState(false)
   const [syncMessage, setSyncMessage] = useState('')
 
   const supabase = createClient()
@@ -79,7 +81,6 @@ export default function FixturesPage() {
       }
     }
     setTeams(uniqueTeams)
-
     setLoading(false)
   }
 
@@ -90,15 +91,27 @@ export default function FixturesPage() {
       const response = await fetch('/api/fixtures/sync-espn', { method: 'POST' })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error ?? 'Could not sync fixtures')
-      setSyncMessage(payload.imported > 0
-        ? `Imported ${payload.imported} fixtures`
-        : 'No new fixtures found'
-      )
+      setSyncMessage(payload.imported > 0 ? `Imported ${payload.imported} fixtures` : 'No new fixtures')
       await load()
     } catch (e: any) {
       setSyncMessage(e.message)
     }
     setSyncing(false)
+  }
+
+  async function syncResults() {
+    setSyncingResults(true)
+    setSyncMessage('')
+    try {
+      const response = await fetch('/api/cron/sync-results')
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error ?? 'Sync failed')
+      setSyncMessage('Results synced')
+      await load()
+    } catch (e: any) {
+      setSyncMessage(e.message)
+    }
+    setSyncingResults(false)
   }
 
   const filtered = fixtures.filter(f => {
@@ -108,22 +121,45 @@ export default function FixturesPage() {
     return statusOk && (activeComp === 'all' || f.competition_id === activeComp)
   })
 
+  const headerAction = (
+    <div className="flex items-center gap-1.5">
+      {isAdmin && (
+        <>
+          <Button size="sm" variant="secondary" onClick={syncResults} loading={syncingResults}>Sync Results</Button>
+          <Button size="sm" variant="secondary" onClick={syncEspnFixtures} loading={syncing}>Sync</Button>
+          <Button size="sm" onClick={() => setAdding(true)}>+ Add</Button>
+        </>
+      )}
+      <button
+        onClick={() => setCompact(c => !c)}
+        className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+        title={compact ? 'Normal view' : 'Compact view'}
+      >
+        {compact ? (
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-4 h-4">
+            <rect x="2" y="4" width="16" height="4" rx="1" />
+            <rect x="2" y="10" width="16" height="4" rx="1" />
+            <rect x="2" y="16" width="16" height="4" rx="1" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-4 h-4">
+            <line x1="2" y1="5" x2="18" y2="5" />
+            <line x1="2" y1="10" x2="18" y2="10" />
+            <line x1="2" y1="15" x2="18" y2="15" />
+          </svg>
+        )}
+      </button>
+    </div>
+  )
+
   if (loading) return <AppShell title="Fixtures"><PageLoader /></AppShell>
 
   return (
-    <AppShell
-      title="Fixtures"
-      action={isAdmin ? (
-        <div className="flex gap-1.5">
-          <Button size="sm" variant="secondary" onClick={syncEspnFixtures} loading={syncing}>Sync</Button>
-          <Button size="sm" onClick={() => setAdding(true)}>+ Add</Button>
-        </div>
-      ) : undefined}
-    >
+    <AppShell title="Fixtures" action={headerAction}>
       <TabBar
         tabs={[{ key: 'upcoming', label: 'Upcoming' }, { key: 'results', label: 'Results' }]}
         active={activeTab}
-        onChange={v => setActiveTab(v as any)}
+        onChange={v => { setActiveTab(v as any); setSyncMessage('') }}
         className="mb-3"
       />
 
@@ -149,14 +185,16 @@ export default function FixturesPage() {
           icon={activeTab === 'upcoming' ? '📅' : '📊'}
           title={activeTab === 'upcoming' ? 'No upcoming fixtures' : 'No results yet'}
           description={activeTab === 'upcoming'
-            ? isAdmin ? 'Tap Sync to import fixtures from ESPN.' : 'Fixtures import automatically via ESPN.'
+            ? isAdmin ? 'Use Sync to import fixtures from ESPN.' : 'Fixtures import automatically.'
             : 'Results appear once matches are completed.'}
         />
+      ) : compact ? (
+        <div className="rounded-xl border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
+          {filtered.map(f => <CompactFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />)}
+        </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(f => (
-            <FixtureCard key={f.id} fixture={f} ownerMap={ownerMap} onUpdate={load} canEdit={isAdmin} />
-          ))}
+          {filtered.map(f => <FixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />)}
         </div>
       )}
 
@@ -188,113 +226,130 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
-function FixtureCard({ fixture, ownerMap, onUpdate, canEdit }: { fixture: FixtureRow; ownerMap: Map<string, any>; onUpdate: () => void; canEdit: boolean }) {
-  const [editing, setEditing] = useState(false)
-  const [homeScore, setHomeScore] = useState(fixture.home_score?.toString() ?? '')
-  const [awayScore, setAwayScore] = useState(fixture.away_score?.toString() ?? '')
-  const [saving, setSaving] = useState(false)
+function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
+  const isCompleted = fixture.status === 'completed'
+  const isLive = fixture.status === 'live'
+  const homeOwner = ownerMap.get(fixture.home_team_id)
+  const awayOwner = ownerMap.get(fixture.away_team_id)
 
+  return (
+    <Link href={`/fixtures/${fixture.id}`} className="block">
+      <div className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/5 transition-colors">
+        <Badge
+          variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
+          className="text-[9px] shrink-0 min-w-[28px] text-center"
+        >
+          {(fixture.competition as any)?.short_name}
+        </Badge>
+
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <div className="flex items-center gap-1 flex-1 justify-end min-w-0">
+            {homeOwner && <Avatar name={homeOwner.name} color={homeOwner.color} size="sm" />}
+            <span className="text-xs text-[var(--text-primary)] truncate">{fixture.home_team?.short_name || fixture.home_team?.name}</span>
+            <TeamCrest team={fixture.home_team} size="xs" />
+          </div>
+
+          <div className="shrink-0 w-14 text-center">
+            {isCompleted ? (
+              <span className="font-bold text-xs text-[var(--text-primary)]">{fixture.home_score}–{fixture.away_score}</span>
+            ) : isLive ? (
+              <span className="text-[10px] text-red-400 font-bold">LIVE</span>
+            ) : (
+              <span className="text-[10px] text-[var(--text-muted)]">
+                {fixture.kickoff_time
+                  ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                  : 'vs'}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <TeamCrest team={fixture.away_team} size="xs" />
+            <span className="text-xs text-[var(--text-primary)] truncate">{fixture.away_team?.short_name || fixture.away_team?.name}</span>
+            {awayOwner && <Avatar name={awayOwner.name} color={awayOwner.color} size="sm" />}
+          </div>
+        </div>
+
+        {!isCompleted && fixture.kickoff_time && (
+          <span className="text-[9px] text-[var(--text-muted)] shrink-0">
+            {new Date(fixture.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
   const homeOwner = ownerMap.get(fixture.home_team_id)
   const awayOwner = ownerMap.get(fixture.away_team_id)
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
 
-  async function saveResult() {
-    setSaving(true)
-    const supabase = createClient()
-    const h = parseInt(homeScore, 10)
-    const a = parseInt(awayScore, 10)
-    if (isNaN(h) || isNaN(a)) { setSaving(false); return }
-    await supabase.from('fixtures').update({ home_score: h, away_score: a, status: 'completed' }).eq('id', fixture.id)
-    setSaving(false)
-    setEditing(false)
-    onUpdate()
-  }
-
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block">
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors">
-      {/* Meta row */}
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[10px] text-[var(--text-muted)]">
-        <Badge
-          variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
-          className="text-[9px]"
-        >
-          {(fixture.competition as any)?.short_name}
-        </Badge>
-        {fixture.round && <span>{fixture.round}</span>}
-        {fixture.matchday && <span>MD{fixture.matchday}</span>}
-        {isLive && <Badge variant="danger" className="text-[9px] ml-1">● LIVE</Badge>}
-        {(fixture.status as any) === 'postponed' && <Badge variant="warning" className="text-[9px] ml-1">PPD</Badge>}
-        <span className="ml-auto">{fixture.kickoff_time ? formatDateTime(fixture.kickoff_time) : '—'}</span>
-      </div>
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors">
+        <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[10px] text-[var(--text-muted)]">
+          <Badge
+            variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
+            className="text-[9px]"
+          >
+            {(fixture.competition as any)?.short_name}
+          </Badge>
+          {fixture.round && <span>{fixture.round}</span>}
+          {fixture.matchday && <span>MD{fixture.matchday}</span>}
+          {isLive && <Badge variant="danger" className="text-[9px] ml-1">● LIVE</Badge>}
+          {(fixture.status as any) === 'postponed' && <Badge variant="warning" className="text-[9px] ml-1">PPD</Badge>}
+          <span className="ml-auto">{fixture.kickoff_time ? formatDateTime(fixture.kickoff_time) : '—'}</span>
+        </div>
 
-      {/* Score row */}
-      <div className="flex items-center gap-2 px-3 pb-2.5">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <TeamCrest team={fixture.home_team} size="sm" />
-            <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.name}</span>
+        <div className="flex items-center gap-2 px-3 pb-2.5">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <TeamCrest team={fixture.home_team} size="sm" />
+              <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.name}</span>
+            </div>
+            {homeOwner && (
+              <div className="flex items-center gap-1 mt-0.5 ml-0.5">
+                <Avatar name={homeOwner.name} color={homeOwner.color} size="sm" />
+                <span className="text-[9px] text-[var(--text-muted)]">{homeOwner.name}</span>
+              </div>
+            )}
           </div>
-          {homeOwner && (
-            <div className="flex items-center gap-1 mt-0.5 ml-0.5">
-              <Avatar name={homeOwner.name} color={homeOwner.color} size="xs" />
-              <span className="text-[9px] text-[var(--text-muted)]">{homeOwner.name}</span>
-            </div>
-          )}
-        </div>
 
-        <div className="shrink-0 text-center min-w-[56px]">
-          {isCompleted ? (
-            <span className="font-bold text-base text-[var(--text-primary)]">
-              {fixture.home_score} – {fixture.away_score}
-            </span>
-          ) : (
-            <span className="text-xs text-[var(--text-muted)] font-medium">vs</span>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0 text-right">
-          <div className="flex items-center gap-1.5 justify-end">
-            <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.name}</span>
-            <TeamCrest team={fixture.away_team} size="sm" />
+          <div className="shrink-0 text-center min-w-[56px]">
+            {isCompleted ? (
+              <span className="font-bold text-base text-[var(--text-primary)]">
+                {fixture.home_score} – {fixture.away_score}
+              </span>
+            ) : (
+              <span className="text-xs text-[var(--text-muted)] font-medium">vs</span>
+            )}
           </div>
-          {awayOwner && (
-            <div className="flex items-center gap-1 mt-0.5 justify-end mr-0.5">
-              <span className="text-[9px] text-[var(--text-muted)]">{awayOwner.name}</span>
-              <Avatar name={awayOwner.name} color={awayOwner.color} size="xs" />
+
+          <div className="flex-1 min-w-0 text-right">
+            <div className="flex items-center gap-1.5 justify-end">
+              <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.name}</span>
+              <TeamCrest team={fixture.away_team} size="sm" />
             </div>
-          )}
+            {awayOwner && (
+              <div className="flex items-center gap-1 mt-0.5 justify-end mr-0.5">
+                <span className="text-[9px] text-[var(--text-muted)]">{awayOwner.name}</span>
+                <Avatar name={awayOwner.name} color={awayOwner.color} size="sm" />
+              </div>
+            )}
+          </div>
         </div>
+
+        {!isCompleted && hasOdds && (
+          <div className="flex items-center gap-1 px-3 pb-2.5">
+            <OddsPill label="1" value={fixture.home_odds} />
+            <OddsPill label="X" value={fixture.draw_odds} />
+            <OddsPill label="2" value={fixture.away_odds} />
+          </div>
+        )}
       </div>
-
-      {/* Odds row (upcoming only) */}
-      {!isCompleted && hasOdds && (
-        <div className="flex items-center gap-1 px-3 pb-2.5">
-          <OddsPill label="1" value={fixture.home_odds} />
-          <OddsPill label="X" value={fixture.draw_odds} />
-          <OddsPill label="2" value={fixture.away_odds} />
-        </div>
-      )}
-
-      {/* Admin inline score entry */}
-      {canEdit && !isCompleted && (
-        <div className="px-3 pb-2.5" onClick={e => e.preventDefault()}>
-          {editing ? (
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" max="99" value={homeScore} onChange={e => setHomeScore(e.target.value)} className="!w-14 text-center !py-1" placeholder="0" />
-              <span className="text-[var(--text-muted)]">-</span>
-              <input type="number" min="0" max="99" value={awayScore} onChange={e => setAwayScore(e.target.value)} className="!w-14 text-center !py-1" placeholder="0" />
-              <Button size="sm" loading={saving} onClick={saveResult}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-            </div>
-          ) : (
-            <button onClick={() => setEditing(true)} className="text-[10px] text-[var(--accent)] hover:underline">Enter result</button>
-          )}
-        </div>
-      )}
-    </div>
     </Link>
   )
 }
