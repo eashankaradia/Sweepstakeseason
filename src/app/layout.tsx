@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Sweepstake Season',
-  description: '2026/27 Club Football Sweepstake',
+  description: '2026/27 Club Football Sweepstake — Match Centre, Activity Feed & Power-Ups',
 }
 
 export const viewport: Viewport = {
