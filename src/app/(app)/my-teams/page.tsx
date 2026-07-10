@@ -60,9 +60,7 @@ export default function MyTeamsPage() {
 
     setData({ league, playerEntries })
 
-    // Load power-up state for my player
     if (myPlayer?.id) {
-      const currentMonth = new Date().toISOString().substring(0, 7) // YYYY-MM
       const [{ data: pups }, { data: upFix }] = await Promise.all([
         supabase.from('power_up_activations')
           .select('*')
@@ -105,11 +103,11 @@ export default function MyTeamsPage() {
     }
   }
 
-  if (loading) return <AppShell title="Teams"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="My Teams"><PageLoader /></AppShell>
 
   if (!data?.league) {
     return (
-      <AppShell title="Teams">
+      <AppShell title="My Teams">
         <EmptyState icon="⚽" title="No league yet" />
       </AppShell>
     )
@@ -119,7 +117,7 @@ export default function MyTeamsPage() {
 
   if (playerEntries.every((e: any) => e.teams.length === 0)) {
     return (
-      <AppShell title="Teams">
+      <AppShell title="My Teams">
         <EmptyState icon="🎯" title="Draft pending" description="Teams will appear here after the draft is run." />
       </AppShell>
     )
@@ -130,7 +128,6 @@ export default function MyTeamsPage() {
   const monthlyLimitUsed = usedThisMonth >= 1
   const usedTeamIds = new Set(powerUps.filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled').map((p: any) => p.team_id))
 
-  // Build a map of team_id → next upcoming fixture for that team
   const teamNextFixture = new Map<string, any>()
   for (const fix of upcomingFixtures) {
     if (!teamNextFixture.has(fix.home_team_id)) teamNextFixture.set(fix.home_team_id, fix)
@@ -138,14 +135,13 @@ export default function MyTeamsPage() {
   }
 
   return (
-    <AppShell title="Teams">
+    <AppShell title="My Teams">
       {successMsg && (
         <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium px-3 py-2.5 rounded-xl">
           {successMsg}
         </div>
       )}
 
-      {/* Power-up status for me */}
       {myPlayerId && (
         <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5">
           <div className="flex items-center justify-between">
@@ -170,7 +166,6 @@ export default function MyTeamsPage() {
               background: isMe ? `${player.color}08` : 'var(--bg-card)',
             }}
           >
-            {/* Player header */}
             <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
               <Avatar name={player.name} color={player.color} size="md" />
               <div className="flex-1 min-w-0">
@@ -193,7 +188,6 @@ export default function MyTeamsPage() {
               </div>
             </div>
 
-            {/* Team list */}
             <div className="px-3 pb-3 space-y-1.5">
               {teams.map(({ team, score, competition }: any) => {
                 const nextFix = teamNextFixture.get(team.id)
@@ -241,7 +235,6 @@ export default function MyTeamsPage() {
                       </div>
                     </div>
 
-                    {/* Power-up section (only for me) */}
                     {isMe && (
                       <div className="mt-2 pt-2 border-t border-[var(--border)]">
                         {pendingForTeam ? (

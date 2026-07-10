@@ -23,10 +23,16 @@ const imgSizes = {
   lg: 56,
 }
 
+const FALLBACK_LOGOS: Record<string, string> = {
+  'Como': 'https://commons.wikimedia.org/wiki/Special:FilePath/Logo_Como_1907_-_2019.svg',
+  'SV Elversberg': 'https://commons.wikimedia.org/wiki/Special:FilePath/SV_Elversberg_Logo.svg',
+}
+
 export function TeamCrest({ team, size = 'md', className }: TeamCrestProps) {
   const [imgFailed, setImgFailed] = useState(false)
   const initials = (team.short_name || team.name).slice(0, 3).toUpperCase()
-  const showLogo = !!team.logo_url && !imgFailed
+  const logoUrl = team.logo_url || FALLBACK_LOGOS[team.name]
+  const showLogo = !!logoUrl && !imgFailed
   const px = imgSizes[size]
 
   return (
@@ -40,7 +46,7 @@ export function TeamCrest({ team, size = 'md', className }: TeamCrestProps) {
     >
       {showLogo ? (
         <img
-          src={team.logo_url!}
+          src={logoUrl!}
           alt={team.name}
           width={px}
           height={px}

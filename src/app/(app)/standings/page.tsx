@@ -87,7 +87,6 @@ export default function StandingsPage() {
 
     setStandings(rows)
 
-    // Group monthly data by month
     const groups: MonthGroup[] = []
     const seen = new Map<string, MonthlyEntry[]>()
     for (const row of (monthly ?? []) as MonthlyEntry[]) {
@@ -112,7 +111,7 @@ export default function StandingsPage() {
 
   return (
     <AppShell title="Standings">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between">
         <p className="text-xs text-[var(--text-secondary)]">{league.season}</p>
         <Badge variant={league.status === 'active' ? 'success' : 'warning'}>
           {league.status === 'active' ? 'Active' : league.status === 'setup' ? 'Setting up' : league.status}
@@ -131,7 +130,6 @@ export default function StandingsPage() {
           <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
         ) : (
           <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-            {/* Header */}
             <div className="grid grid-cols-[28px_1fr_28px_28px_28px_36px] items-center gap-1 px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
               <span className="text-[10px] text-[var(--text-muted)] font-medium text-center">#</span>
               <span className="text-[10px] text-[var(--text-muted)] font-medium">Player</span>
@@ -194,20 +192,16 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
         const last = rows[rows.length - 1]
         return (
           <div key={month} className="rounded-xl border border-[var(--border)] overflow-hidden">
-            {/* Month header */}
             <div className="px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)] flex items-center justify-between">
               <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
               <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
-                {winner && (
-                  <span className="text-amber-400 font-medium">🥇 {winner.player_name}</span>
-                )}
+                {winner && <span className="text-amber-400 font-medium">🥇 {winner.player_name}</span>}
                 {last && last.player_id !== winner?.player_id && (
                   <span className="text-red-400 font-medium">🪣 {last.player_name}</span>
                 )}
               </div>
             </div>
 
-            {/* Rows */}
             {rows.map((row, idx) => {
               const isMe = row.player_id === myUserId
               return (
@@ -218,10 +212,7 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
                   <span className={`text-[11px] font-bold w-4 text-center shrink-0 ${idx === 0 ? 'text-amber-400' : idx === rows.length - 1 ? 'text-red-400' : 'text-[var(--text-muted)]'}`}>
                     {idx + 1}
                   </span>
-                  <div
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: row.player_color }}
-                  />
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.player_color }} />
                   <span className="flex-1 text-sm text-[var(--text-primary)] font-medium min-w-0 truncate">
                     {row.player_name}
                     {isMe && <span className="ml-1 text-[9px] text-[var(--accent)] font-semibold uppercase tracking-wide">You</span>}
