@@ -344,25 +344,37 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Leaderboard */}
+      {/* Compact standings strip — top 3 + your position if outside top 3 */}
       {standings.length > 0 && hasDraft && (
         <section className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Leaderboard</h2>
-            <Link href="/standings" className="text-xs text-[var(--accent)]">Full table →</Link>
+            <h2 className="font-bold text-sm text-[var(--text-primary)]">Top of the table</h2>
+            <Link href="/standings" className="text-xs text-[var(--accent)]">Full standings →</Link>
           </div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-            {standings.slice(0, 5).map((entry: any, idx: number) => (
-              <LeaderboardRow
-                key={entry.player.id}
-                entry={entry}
-                position={idx + 1}
-                isMe={entry.player.user_id === myUserId}
-                posDelta={posChangeMap.get(entry.player.id) ?? 0}
-                form={formMap.get(entry.player.id) ?? []}
-                weeklyPts={weeklyPtsMap.get(entry.player.id) ?? 0}
-              />
-            ))}
+            {(() => {
+              const top3 = standings.slice(0, 3)
+              const myIdx = myUserId ? standings.findIndex((s: any) => s.player.user_id === myUserId) : -1
+              const showMe = myIdx >= 3
+              const rows = showMe
+                ? [...top3, null, standings[myIdx]]
+                : top3
+              return rows.map((entry: any, i) =>
+                entry === null ? (
+                  <div key="ellipsis" className="px-3 py-1 text-[10px] text-[var(--text-muted)] bg-[var(--bg-card)] border-b border-[var(--border)] text-center">···</div>
+                ) : (
+                  <LeaderboardRow
+                    key={entry.player.id}
+                    entry={entry}
+                    position={showMe && i === rows.length - 1 ? myIdx + 1 : i + 1}
+                    isMe={entry.player.user_id === myUserId}
+                    posDelta={posChangeMap.get(entry.player.id) ?? 0}
+                    form={formMap.get(entry.player.id) ?? []}
+                    weeklyPts={weeklyPtsMap.get(entry.player.id) ?? 0}
+                  />
+                )
+              )
+            })()}
           </div>
         </section>
       )}

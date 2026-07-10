@@ -430,10 +430,13 @@ function TablesView({
     if (!list.find((t: any) => t.id === tc.teams.id)) list.push(tc.teams)
   }
 
-  const typeOrder: Record<string, number> = { domestic_league: 0, european: 1, domestic_cup: 2 }
-  const sortedComps = [...competitions].sort((a, b) =>
-    (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
-  )
+  const typeOrder: Record<string, number> = { domestic_league: 0, european: 1 }
+  // Only show scoring competitions in tables (no domestic cups — they don't award sweepstake points)
+  const sortedComps = [...competitions]
+    .filter(c => c.competition_type !== 'domestic_cup')
+    .sort((a, b) =>
+      (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
+    )
 
   return (
     <div className="space-y-5">
@@ -623,27 +626,41 @@ function HeatmapView({
     return <EmptyState icon="🗂️" title="No draft yet" description="Run the draft to see the ownership heatmap." />
   }
 
+  // Only show scoring competitions (no cups) in heatmap
+  const scoringComps = competitions.filter(c => c.competition_type !== 'domestic_cup')
+
   const compTeamMap = new Map<string, any[]>()
   for (const tc of teamCompetitions) {
     if (!tc.teams) continue
+    // Only include teams in scoring competitions
+    const comp = scoringComps.find(c => c.id === tc.competition_id)
+    if (!comp) continue
     if (!compTeamMap.has(tc.competition_id)) compTeamMap.set(tc.competition_id, [])
     const list = compTeamMap.get(tc.competition_id)!
     if (!list.find((t: any) => t.id === tc.teams.id)) list.push(tc.teams)
   }
 
-  // Columns: teams grouped by competition, sorted alphabetically within each
-  const allColumns: { team: any; comp: any }[] = []
-  for (const comp of competitions) {
-    const teams = (compTeamMap.get(comp.id) ?? []).slice().sort((a: any, b: any) => a.name.localeCompare(b.name))
-    for (const team of teams) {
-      allColumns.push({ team, comp })
-    }
-  }
-
+  // Build ownership map (player_id → Set<team_id>)
   const ownershipMap = new Map<string, Set<string>>()
   for (const a of assignments) {
     if (!ownershipMap.has(a.player_id)) ownershipMap.set(a.player_id, new Set())
     ownershipMap.get(a.player_id)!.add(a.team_id)
+  }
+
+  // Identify the current user's player
+  const myPlayer = myUserId ? players.find(p => p.user_id === myUserId) : null
+
+  // Columns: teams per scoring competition, sorted by league_position then name
+  const allColumns: { team: any; comp: any }[] = []
+  for (const comp of scoringComps) {
+    const teams = (compTeamMap.get(comp.id) ?? [])
+      .slice()
+      .sort((a: any, b: any) =>
+        (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name)
+      )
+    for (const team of teams) {
+      allColumns.push({ team, comp })
+    }
   }
 
   if (allColumns.length === 0) {
@@ -652,23 +669,30 @@ function HeatmapView({
 
   return (
     <div className="overflow-x-auto -mx-4 px-4">
+      {myPlayer && (
+        <div className="mb-2 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+          <div className="w-3 h-3 rounded-sm border-2 shrink-0" style={{ borderColor: myPlayer.color, background: `${myPlayer.color}30` }} />
+          <span>Your row is highlighted</span>
+          <div className="w-3 h-3 rounded-full shrink-0 ml-2" style={{ background: myPlayer.color }} />
+          <span>Your teams</span>
+        </div>
+      )}
       <div className="rounded-xl border border-[var(--border)] overflow-hidden min-w-max">
         <table className="text-[10px] border-collapse">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 bg-[var(--bg-card)] px-2 py-1.5 text-left border-b border-r border-[var(--border)] text-[var(--text-muted)] font-medium min-w-[90px] whitespace-nowrap">
+              <th className="sticky left-0 z-10 bg-[var(--bg-card)] px-2 py-1.5 text-left border-b border-r border-[var(--border)] text-[var(--text-muted)] font-medium min-w-[96px] whitespace-nowrap">
                 Player
               </th>
-              {competitions.map(comp => {
+              {scoringComps.map(comp => {
                 const teamCount = (compTeamMap.get(comp.id) ?? []).length
                 if (teamCount === 0) return null
                 const isEu = comp.competition_type === 'european'
-                const isCup = comp.competition_type === 'domestic_cup'
                 return (
                   <th
                     key={comp.id}
                     colSpan={teamCount}
-                    className={`text-center px-1 py-1.5 border-b border-r border-[var(--border)] font-bold text-[9px] tracking-wide ${isEu ? 'text-purple-400 bg-purple-500/5' : isCup ? 'text-amber-400 bg-amber-500/5' : 'text-[var(--accent)] bg-[var(--accent)]/5'}`}
+                    className={`text-center px-1 py-1.5 border-b border-r border-[var(--border)] font-bold text-[9px] tracking-wide ${isEu ? 'text-purple-400 bg-purple-500/5' : 'text-[var(--accent)] bg-[var(--accent)]/5'}`}
                   >
                     {comp.short_name}
                   </th>
@@ -678,10 +702,12 @@ function HeatmapView({
             <tr>
               <th className="sticky left-0 z-10 bg-[var(--bg-card)] border-b border-r border-[var(--border)]" />
               {allColumns.map(({ team }) => (
-                <th key={team.id} className="px-0.5 py-1 border-b border-r border-[var(--border)]/50 font-normal bg-[var(--bg-card)]">
+                <th key={`${team.id}-col`} className="px-0.5 py-1 border-b border-r border-[var(--border)]/50 font-normal bg-[var(--bg-card)]">
                   <div className="flex flex-col items-center gap-0.5 min-w-[28px]">
                     <TeamCrest team={team} size="xs" />
-                    <span className="text-[8px] text-[var(--text-muted)] leading-none max-w-[30px] text-center truncate">{team.short_name || team.name.slice(0, 3).toUpperCase()}</span>
+                    <span className="text-[8px] text-[var(--text-muted)] leading-none max-w-[30px] text-center truncate">
+                      {team.short_name || team.name.slice(0, 3).toUpperCase()}
+                    </span>
                   </div>
                 </th>
               ))}
@@ -690,26 +716,36 @@ function HeatmapView({
           <tbody>
             {players.map(player => {
               const owned = ownershipMap.get(player.id) ?? new Set()
-              const isMe = player.user_id === myUserId
+              const isMe = myPlayer ? player.id === myPlayer.id : false
               return (
                 <tr key={player.id}>
                   <td
                     className="sticky left-0 z-10 border-b border-r border-[var(--border)] px-2 py-2 whitespace-nowrap"
-                    style={{ backgroundColor: isMe ? `${player.color}12` : 'var(--bg-card)' }}
+                    style={{
+                      backgroundColor: isMe ? `${player.color}20` : 'var(--bg-card)',
+                      borderLeft: isMe ? `3px solid ${player.color}` : '3px solid transparent',
+                    }}
                   >
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
-                      <span className="text-[var(--text-primary)] font-medium text-[10px]">{player.name}</span>
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
+                      <span className={`font-medium text-[10px] ${isMe ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+                        {player.name}
+                      </span>
+                      {isMe && <span className="text-[8px] font-bold uppercase" style={{ color: player.color }}>You</span>}
                     </div>
                   </td>
                   {allColumns.map(({ team }) => {
                     const isOwned = owned.has(team.id)
                     return (
                       <td
-                        key={team.id}
+                        key={`${player.id}-${team.id}`}
                         className="border-b border-r border-[var(--border)]/30 text-center"
                         style={{
-                          backgroundColor: isOwned ? `${player.color}40` : isMe ? `${player.color}08` : undefined,
+                          backgroundColor: isOwned
+                            ? `${player.color}55`
+                            : isMe
+                            ? `${player.color}10`
+                            : undefined,
                           height: '32px',
                           width: '32px',
                           minWidth: '32px',
@@ -717,7 +753,7 @@ function HeatmapView({
                       >
                         {isOwned && (
                           <div className="flex items-center justify-center h-full">
-                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: player.color }} />
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: player.color }} />
                           </div>
                         )}
                       </td>
@@ -729,7 +765,7 @@ function HeatmapView({
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">Scroll horizontally to see all teams</p>
+      <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">Teams ordered by league position · scroll to see all</p>
     </div>
   )
 }
