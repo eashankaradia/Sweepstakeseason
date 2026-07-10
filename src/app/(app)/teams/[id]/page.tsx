@@ -184,25 +184,47 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
 
       {/* Season stats */}
       {teamScore && (
-        <div className="grid grid-cols-4 gap-2 mb-3">
-          {[
-            { label: 'Pts', value: teamScore.total_points, color: 'text-[var(--text-primary)]' },
-            { label: 'W', value: teamScore.wins, color: 'text-emerald-400' },
-            { label: 'D', value: teamScore.draws, color: 'text-amber-400' },
-            { label: 'L', value: teamScore.losses, color: 'text-red-400' },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-center py-3">
-              <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{s.label}</p>
+        <div className="mb-3">
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            {[
+              { label: 'Pts', value: teamScore.total_points, color: 'text-[var(--text-primary)]' },
+              { label: 'W', value: teamScore.wins, color: 'text-emerald-400' },
+              { label: 'D', value: teamScore.draws, color: 'text-amber-400' },
+              { label: 'L', value: teamScore.losses, color: 'text-red-400' },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-center py-3">
+                <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+          {/* GF / GA / GD row */}
+          {(teamScore.goals_for > 0 || teamScore.goals_against > 0) && (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'GF', value: teamScore.goals_for ?? 0, color: 'text-[var(--text-secondary)]' },
+                { label: 'GA', value: teamScore.goals_against ?? 0, color: 'text-[var(--text-secondary)]' },
+                {
+                  label: 'GD',
+                  value: (teamScore.goals_for ?? 0) - (teamScore.goals_against ?? 0),
+                  color: (teamScore.goals_for ?? 0) - (teamScore.goals_against ?? 0) > 0 ? 'text-emerald-400' : (teamScore.goals_for ?? 0) - (teamScore.goals_against ?? 0) < 0 ? 'text-red-400' : 'text-[var(--text-muted)]',
+                },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-center py-2.5">
+                  <p className={`text-base font-bold ${s.color}`}>{s.value > 0 ? `+${s.value}` : s.value}</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{s.label}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 
       {/* ESPN record (if available) */}
       {espnRecord && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 mb-3 text-[10px] text-[var(--text-muted)]">
-          ESPN record: {espnRecord.summary}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 mb-3 flex items-center gap-2">
+          <span className="text-[10px] text-[var(--text-muted)]">Season record</span>
+          <span className="text-xs font-semibold text-[var(--text-primary)] ml-auto">{espnRecord.summary}</span>
         </div>
       )}
 

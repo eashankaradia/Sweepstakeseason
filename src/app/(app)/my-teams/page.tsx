@@ -256,18 +256,8 @@ function MineView({
         </div>
       </div>
 
-      {/* Power-up status */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[var(--text-primary)]">⚡ Double or Nothing</p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">1 use per month · each club once per season</p>
-          </div>
-          <Badge variant={monthlyLimitUsed ? 'muted' : 'success'}>
-            {monthlyLimitUsed ? 'Used this month' : 'Available'}
-          </Badge>
-        </div>
-      </div>
+      {/* Power-up tiles */}
+      <PowerUpTiles monthlyLimitUsed={monthlyLimitUsed} powerUps={powerUps} />
 
       {/* Teams list */}
       <div className="space-y-2">
@@ -368,71 +358,137 @@ function MineView({
         })}
       </div>
 
-      {/* Wildcard explanation */}
-      <WildcardExplainer />
     </div>
   )
 }
 
-function WildcardExplainer() {
-  const [open, setOpen] = useState(false)
+function PowerUpTiles({ monthlyLimitUsed, powerUps }: { monthlyLimitUsed: boolean; powerUps: any[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  const toggle = (id: string) => setExpanded(prev => (prev === id ? null : id))
+
+  const tiles = [
+    {
+      id: 'don',
+      icon: '⚡',
+      name: 'Double or Nothing',
+      available: !monthlyLimitUsed,
+      status: monthlyLimitUsed ? 'Used this month' : 'Available',
+      statusColor: monthlyLimitUsed ? 'text-[var(--text-muted)]' : 'text-emerald-400',
+    },
+    {
+      id: 'reverse',
+      icon: '🔄',
+      name: 'Reverse',
+      available: true,
+      status: 'Once per player',
+      statusColor: 'text-purple-400',
+    },
+    {
+      id: 'gk',
+      icon: '⚔️',
+      name: 'Giant Killer',
+      available: true,
+      status: 'Auto-awarded',
+      statusColor: 'text-amber-400',
+    },
+  ]
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-3 py-3 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-base">🃏</span>
-          <span className="font-semibold text-sm text-[var(--text-primary)]">How power-ups work</span>
+      <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider px-3 pt-3 pb-2">Power-ups</p>
+
+      <div className="grid grid-cols-3 gap-2 px-3 pb-3">
+        {tiles.map(tile => (
+          <button
+            key={tile.id}
+            onClick={() => toggle(tile.id)}
+            className={`rounded-xl border p-2.5 text-left transition-all ${
+              !tile.available
+                ? 'opacity-40 border-[var(--border)] bg-[var(--bg)]'
+                : expanded === tile.id
+                  ? 'border-[var(--accent)]/60 bg-[var(--accent)]/8'
+                  : 'border-[var(--border)] bg-[var(--bg)] hover:border-[var(--accent)]/30'
+            }`}
+          >
+            <div className="text-lg mb-1.5">{tile.icon}</div>
+            <div className="text-[10px] font-semibold text-[var(--text-primary)] leading-tight">{tile.name}</div>
+            <div className={`text-[9px] mt-1 font-medium ${tile.statusColor}`}>{tile.status}</div>
+            <div className="mt-1.5 flex justify-end">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={`w-3 h-3 text-[var(--text-muted)] transition-transform ${expanded === tile.id ? 'rotate-180' : ''}`}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {expanded === 'don' && (
+        <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm">⚡</span>
+            <p className="font-semibold text-sm text-[var(--text-primary)]">Double or Nothing</p>
+            <Badge variant="success" className="text-[9px] ml-auto">1× per month</Badge>
+          </div>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Pick a specific upcoming match for one of your clubs. The result is amplified:
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-center">
+              <p className="text-[10px] font-bold text-emerald-400">Win</p>
+              <p className="text-[13px] font-black text-emerald-400">×2 pts</p>
+            </div>
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-2 text-center">
+              <p className="text-[10px] font-bold text-amber-400">Draw</p>
+              <p className="text-[13px] font-black text-amber-400">−1 pt</p>
+            </div>
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-2 py-2 text-center">
+              <p className="text-[10px] font-bold text-red-400">Loss</p>
+              <p className="text-[13px] font-black text-red-400">−3 pts</p>
+            </div>
+          </div>
+          <p className="text-[10px] text-[var(--text-muted)]">
+            Each club can only be used once per season. You get one activation per calendar month. Activate on a team card below.
+          </p>
         </div>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${open ? 'rotate-180' : ''}`}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
+      )}
 
-      {open && (
-        <div className="border-t border-[var(--border)] px-3 py-3 space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">⚡</span>
-              <p className="font-semibold text-sm text-[var(--text-primary)]">Double or Nothing</p>
-              <Badge variant="success" className="text-[9px] ml-auto">1× per month</Badge>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Pick a specific upcoming match for one of your clubs. If they <span className="text-emerald-400 font-medium">win</span>, you score double points for that game. If they <span className="text-red-400 font-medium">lose</span>, you score zero. Draws are unaffected.
-            </p>
-            <p className="text-[10px] text-[var(--text-muted)]">
-              Each club can only be used once per season. You get one activation per calendar month.
-            </p>
+      {expanded === 'reverse' && (
+        <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm">🔄</span>
+            <p className="font-semibold text-sm text-[var(--text-primary)]">Reverse</p>
+            <Badge variant="purple" className="text-[9px] ml-auto">once per player</Badge>
           </div>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Play this on any fixture where an opponent's club is involved. For that match only,{' '}
+            <span className="text-[var(--accent)] font-medium">ownership of both clubs swaps</span> — you get their points, they get yours.
+          </p>
+          <p className="text-[10px] text-[var(--text-muted)]">
+            You can only target each opponent once per season. Best used when their star club faces a tough away day and yours is flying at home.
+          </p>
+        </div>
+      )}
 
-          <div className="border-t border-[var(--border)]/50 pt-3 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">🔄</span>
-              <p className="font-semibold text-sm text-[var(--text-primary)]">Reverse</p>
-              <Badge variant="purple" className="text-[9px] ml-auto">1× per season</Badge>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              At the end of any month, flip your single worst result. A <span className="text-red-400 font-medium">loss</span> becomes a <span className="text-emerald-400 font-medium">win</span> — the points swing works both ways.
-            </p>
-            <p className="text-[10px] text-[var(--text-muted)]">
-              One use for the entire season. Choose your moment wisely.
-            </p>
+      {expanded === 'gk' && (
+        <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm">⚔️</span>
+            <p className="font-semibold text-sm text-[var(--text-primary)]">Giant Killer Bonus</p>
+            <Badge variant="warning" className="text-[9px] ml-auto">Auto-awarded</Badge>
           </div>
-
-          <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)]/50 px-2.5 py-2">
-            <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-              💡 <span className="text-[var(--text-secondary)]">Tip:</span> Save Reverse for a month where one bad result cost you heavily. D-o-N is best used when your team has a favourable fixture at home against a weaker side.
-            </p>
-          </div>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            If one of your clubs beats a team that started the match <span className="font-semibold text-[var(--text-primary)]">5+ league places above them</span>, you automatically earn a Giant Killer bonus — no activation needed.
+          </p>
+          <p className="text-[10px] text-[var(--text-muted)]">
+            This rewards holding lower-ranked clubs. A win from 10 places below earns more than a win from 5 — the bigger the upset, the bigger the bonus.
+          </p>
         </div>
       )}
     </div>

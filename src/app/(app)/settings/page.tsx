@@ -12,6 +12,7 @@ const settingsSections = [
   { href: '/settings/teams', icon: '⚽', label: 'Teams', description: 'Assign teams to competitions' },
   { href: '/settings/scoring', icon: '📊', label: 'Scoring rules', description: 'Configure points and bonuses' },
   { href: '/draft', icon: '🎯', label: 'Draft room', description: 'Run, lock, and manage the draw' },
+  { href: '/rules', icon: '📖', label: 'How it works', description: 'Scoring, power-ups, and competition rules' },
 ]
 
 export default async function SettingsPage() {
