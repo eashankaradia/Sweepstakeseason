@@ -238,27 +238,7 @@ export default function DashboardPage() {
   const myPos = myEntry ? standings.indexOf(myEntry) + 1 : null
   const hasDraft = standings.some((s: any) => s.teamCount > 0)
 
-  const todayTeamCount = new Set([
-    ...liveFixtures.map((f: any) => f.home_team_id),
-    ...liveFixtures.map((f: any) => f.away_team_id),
-    ...todayFixtures.map((f: any) => f.home_team_id),
-    ...todayFixtures.map((f: any) => f.away_team_id),
-  ]).size
-
   const weekFixtureCount = weekFixtures.length + todayFixtures.length + liveFixtures.length
-
-  // Biggest movers this week
-  const standingsWithWeekly = standings.map(e => ({ ...e, wkPts: weeklyPtsMap.get(e.player.id) ?? 0 }))
-  const topGainer = [...standingsWithWeekly].filter(e => e.wkPts > 0).sort((a, b) => b.wkPts - a.wkPts)[0]
-  const topLoser = [...standingsWithWeekly].filter(e => e.wkPts < 0).sort((a, b) => a.wkPts - b.wkPts)[0]
-
-  // Group week fixtures by day
-  const weekByDay = new Map<string, any[]>()
-  for (const f of weekFixtures) {
-    const day = (f.kickoff_time as string).substring(0, 10)
-    if (!weekByDay.has(day)) weekByDay.set(day, [])
-    weekByDay.get(day)!.push(f)
-  }
 
   return (
     <AppShell
@@ -344,134 +324,94 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Compact standings strip — top 3 + your position if outside top 3 */}
+      {/* Full leaderboard */}
       {standings.length > 0 && hasDraft && (
         <section className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Top of the table</h2>
-            <Link href="/standings" className="text-xs text-[var(--accent)]">Full standings →</Link>
+            <h2 className="font-bold text-sm text-[var(--text-primary)]">Leaderboard</h2>
+            <Link href="/standings" className="text-xs text-[var(--accent)]">Details →</Link>
           </div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-            {(() => {
-              const top3 = standings.slice(0, 3)
-              const myIdx = myUserId ? standings.findIndex((s: any) => s.player.user_id === myUserId) : -1
-              const showMe = myIdx >= 3
-              const rows = showMe
-                ? [...top3, null, standings[myIdx]]
-                : top3
-              return rows.map((entry: any, i) =>
-                entry === null ? (
-                  <div key="ellipsis" className="px-3 py-1 text-[10px] text-[var(--text-muted)] bg-[var(--bg-card)] border-b border-[var(--border)] text-center">···</div>
-                ) : (
-                  <LeaderboardRow
-                    key={entry.player.id}
-                    entry={entry}
-                    position={showMe && i === rows.length - 1 ? myIdx + 1 : i + 1}
-                    isMe={entry.player.user_id === myUserId}
-                    posDelta={posChangeMap.get(entry.player.id) ?? 0}
-                    form={formMap.get(entry.player.id) ?? []}
-                    weeklyPts={weeklyPtsMap.get(entry.player.id) ?? 0}
-                  />
-                )
-              )
-            })()}
+            {standings.map((entry: any, i: number) => (
+              <LeaderboardRow
+                key={entry.player.id}
+                entry={entry}
+                position={i + 1}
+                isMe={entry.player.user_id === myUserId}
+                posDelta={posChangeMap.get(entry.player.id) ?? 0}
+                form={formMap.get(entry.player.id) ?? []}
+                weeklyPts={weeklyPtsMap.get(entry.player.id) ?? 0}
+              />
+            ))}
           </div>
         </section>
       )}
 
-      {/* Biggest Movers this week */}
-      {hasDraft && (topGainer || topLoser) && (
-        <section className="mb-4">
-          <h2 className="font-bold text-sm text-[var(--text-primary)] mb-2">This Week</h2>
-          <div className={`grid gap-2 ${topGainer && topLoser ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {topGainer && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-2">🚀 Top scorer</p>
-                <div className="flex items-center gap-2">
-                  <Avatar name={topGainer.player.name} color={topGainer.player.color} size="sm" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{topGainer.player.name.split(' ')[0]}</p>
-                    <p className="text-base font-black text-emerald-400">+{topGainer.wkPts}</p>
+      {/* Today's fixtures — my clubs only */}
+      {(() => {
+        const myTeamIds = myEntry
+          ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
+          : new Set<string>()
+        const myToday = myTeamIds.size > 0
+          ? todayFixtures.filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
+          : []
+        if (myToday.length === 0) return null
+        return (
+          <section className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-bold text-sm text-[var(--text-primary)]">
+                My Clubs Today
+                <span className="ml-1.5 font-normal text-xs text-[var(--text-muted)]">· {myToday.length} game{myToday.length !== 1 ? 's' : ''}</span>
+              </h2>
+              <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
+            </div>
+            <div className="space-y-2">
+              {myToday.map((f: any) => (
+                <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+              ))}
+            </div>
+          </section>
+        )
+      })()}
+
+      {/* This week's upcoming fixtures — my clubs only */}
+      {(() => {
+        const myTeamIds = myEntry
+          ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
+          : new Set<string>()
+        const myWeek = myTeamIds.size > 0
+          ? weekFixtures.filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
+          : []
+        if (myWeek.length === 0) return null
+        const myWeekByDay = new Map<string, any[]>()
+        for (const f of myWeek) {
+          const day = (f.kickoff_time as string).substring(0, 10)
+          if (!myWeekByDay.has(day)) myWeekByDay.set(day, [])
+          myWeekByDay.get(day)!.push(f)
+        }
+        return (
+          <section className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-bold text-sm text-[var(--text-primary)]">My Clubs This Week</h2>
+              <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
+            </div>
+            <div className="space-y-3">
+              {[...myWeekByDay.entries()].map(([day, dayFixtures]) => (
+                <div key={day}>
+                  <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5">
+                    {new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </p>
+                  <div className="space-y-1.5">
+                    {dayFixtures.map((f: any) => (
+                      <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+                    ))}
                   </div>
                 </div>
-              </div>
-            )}
-            {topLoser && (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
-                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-2">📉 Struggling</p>
-                <div className="flex items-center gap-2">
-                  <Avatar name={topLoser.player.name} color={topLoser.player.color} size="sm" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{topLoser.player.name.split(' ')[0]}</p>
-                    <p className="text-base font-black text-red-400">{topLoser.wkPts}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Today's fixtures */}
-      {(todayFixtures.length > 0) && (
-        <section className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">
-              Today
-              {todayTeamCount > 0 && (
-                <span className="ml-1.5 font-normal text-xs text-[var(--text-muted)]">
-                  · {todayTeamCount} clubs
-                </span>
-              )}
-            </h2>
-            <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
-          </div>
-          <div className="space-y-2">
-            {todayFixtures.map(f => (
-              <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* This week's upcoming fixtures */}
-      {weekFixtures.length > 0 && (
-        <section className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Coming Up</h2>
-            <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
-          </div>
-          <div className="space-y-3">
-            {[...weekByDay.entries()].map(([day, dayFixtures]) => (
-              <div key={day}>
-                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5">
-                  {new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-                </p>
-                <div className="space-y-1.5">
-                  {dayFixtures.map((f: any) => (
-                    <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Recent results */}
-      {recentResults.length > 0 && (
-        <section className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Recent Results</h2>
-            <Link href="/fixtures?tab=results" className="text-xs text-[var(--accent)]">See all →</Link>
-          </div>
-          <div className="space-y-2">
-            {recentResults.slice(0, 3).map(f => (
-              <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* Activity feed */}
       {activityFeed.length > 0 && (

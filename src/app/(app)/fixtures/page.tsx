@@ -55,7 +55,7 @@ export default function FixturesPage() {
         .maybeSingle(),
     ])
 
-    setCompetitions(comps ?? [])
+    setCompetitions((comps ?? []).filter((c: any) => c.competition_type !== 'domestic_cup'))
     setFixtures((fix ?? []) as any[])
     setLastSyncedAt((lastSync as any)?.created_at ?? null)
 
@@ -71,7 +71,8 @@ export default function FixturesPage() {
     const statusOk = activeTab === 'upcoming'
       ? f.status === 'scheduled' || f.status === 'live' || (f.status as any) === 'postponed'
       : f.status === 'completed'
-    return statusOk && (activeComp === 'all' || f.competition_id === activeComp)
+    const notCup = (f.competition as any)?.competition_type !== 'domestic_cup'
+    return statusOk && notCup && (activeComp === 'all' || f.competition_id === activeComp)
   })
 
   if (loading) return <AppShell title="Fixtures"><PageLoader /></AppShell>

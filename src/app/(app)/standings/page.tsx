@@ -626,13 +626,11 @@ function HeatmapView({
     return <EmptyState icon="🗂️" title="No draft yet" description="Run the draft to see the ownership heatmap." />
   }
 
-  // Only show scoring competitions (no cups) in heatmap
   const scoringComps = competitions.filter(c => c.competition_type !== 'domestic_cup')
 
   const compTeamMap = new Map<string, any[]>()
   for (const tc of teamCompetitions) {
     if (!tc.teams) continue
-    // Only include teams in scoring competitions
     const comp = scoringComps.find(c => c.id === tc.competition_id)
     if (!comp) continue
     if (!compTeamMap.has(tc.competition_id)) compTeamMap.set(tc.competition_id, [])
@@ -640,132 +638,93 @@ function HeatmapView({
     if (!list.find((t: any) => t.id === tc.teams.id)) list.push(tc.teams)
   }
 
-  // Build ownership map (player_id → Set<team_id>)
-  const ownershipMap = new Map<string, Set<string>>()
+  // team_id → player
+  const teamOwnerMap = new Map<string, any>()
   for (const a of assignments) {
-    if (!ownershipMap.has(a.player_id)) ownershipMap.set(a.player_id, new Set())
-    ownershipMap.get(a.player_id)!.add(a.team_id)
+    const player = players.find(p => p.id === a.player_id)
+    if (player) teamOwnerMap.set(a.team_id, player)
   }
 
-  // Identify the current user's player
   const myPlayer = myUserId ? players.find(p => p.user_id === myUserId) : null
 
-  // Columns: teams per scoring competition, sorted by league_position then name
-  const allColumns: { team: any; comp: any }[] = []
-  for (const comp of scoringComps) {
-    const teams = (compTeamMap.get(comp.id) ?? [])
-      .slice()
-      .sort((a: any, b: any) =>
-        (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name)
-      )
-    for (const team of teams) {
-      allColumns.push({ team, comp })
-    }
-  }
-
-  if (allColumns.length === 0) {
+  const hasTeams = scoringComps.some(c => (compTeamMap.get(c.id) ?? []).length > 0)
+  if (!hasTeams) {
     return <EmptyState icon="🗂️" title="No teams found" description="Add teams to competitions to see the heatmap." />
   }
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
-      {myPlayer && (
-        <div className="mb-2 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
-          <div className="w-3 h-3 rounded-sm border-2 shrink-0" style={{ borderColor: myPlayer.color, background: `${myPlayer.color}30` }} />
-          <span>Your row is highlighted</span>
-          <div className="w-3 h-3 rounded-full shrink-0 ml-2" style={{ background: myPlayer.color }} />
-          <span>Your teams</span>
-        </div>
-      )}
-      <div className="rounded-xl border border-[var(--border)] overflow-hidden min-w-max">
-        <table className="text-[10px] border-collapse">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-[var(--bg-card)] px-2 py-1.5 text-left border-b border-r border-[var(--border)] text-[var(--text-muted)] font-medium min-w-[96px] whitespace-nowrap">
-                Player
-              </th>
-              {scoringComps.map(comp => {
-                const teamCount = (compTeamMap.get(comp.id) ?? []).length
-                if (teamCount === 0) return null
-                const isEu = comp.competition_type === 'european'
+    <div className="space-y-4">
+      {/* Player colour legend */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-0.5">
+        {players.map(p => {
+          const isMe = myPlayer ? p.id === myPlayer.id : false
+          return (
+            <div key={p.id} className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+              <span className={`text-[10px] ${isMe ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+                {p.name}
+              </span>
+              {isMe && <span className="text-[9px] font-bold" style={{ color: p.color }}>You</span>}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Per-competition sections */}
+      {scoringComps.map(comp => {
+        const teams = (compTeamMap.get(comp.id) ?? [])
+          .slice()
+          .sort((a: any, b: any) =>
+            (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name)
+          )
+        if (teams.length === 0) return null
+        const isEu = comp.competition_type === 'european'
+
+        return (
+          <div key={comp.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isEu ? 'bg-purple-500/15 text-purple-400' : 'bg-[var(--accent)]/15 text-[var(--accent)]'}`}
+              >
+                {comp.short_name}
+              </div>
+              <span className="text-xs font-semibold text-[var(--text-secondary)] truncate">{comp.name}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {teams.map((team: any) => {
+                const owner = teamOwnerMap.get(team.id)
+                const isMyTeam = myPlayer && owner?.id === myPlayer.id
                 return (
-                  <th
-                    key={comp.id}
-                    colSpan={teamCount}
-                    className={`text-center px-1 py-1.5 border-b border-r border-[var(--border)] font-bold text-[9px] tracking-wide ${isEu ? 'text-purple-400 bg-purple-500/5' : 'text-[var(--accent)] bg-[var(--accent)]/5'}`}
-                  >
-                    {comp.short_name}
-                  </th>
-                )
-              })}
-            </tr>
-            <tr>
-              <th className="sticky left-0 z-10 bg-[var(--bg-card)] border-b border-r border-[var(--border)]" />
-              {allColumns.map(({ team }) => (
-                <th key={`${team.id}-col`} className="px-0.5 py-1 border-b border-r border-[var(--border)]/50 font-normal bg-[var(--bg-card)]">
-                  <div className="flex flex-col items-center gap-0.5 min-w-[28px]">
-                    <TeamCrest team={team} size="xs" />
-                    <span className="text-[8px] text-[var(--text-muted)] leading-none max-w-[30px] text-center truncate">
-                      {team.short_name || team.name.slice(0, 3).toUpperCase()}
-                    </span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {players.map(player => {
-              const owned = ownershipMap.get(player.id) ?? new Set()
-              const isMe = myPlayer ? player.id === myPlayer.id : false
-              return (
-                <tr key={player.id}>
-                  <td
-                    className="sticky left-0 z-10 border-b border-r border-[var(--border)] px-2 py-2 whitespace-nowrap"
+                  <div
+                    key={team.id}
+                    className="rounded-lg p-2 flex flex-col items-center gap-1 border transition-colors"
                     style={{
-                      backgroundColor: isMe ? `${player.color}20` : 'var(--bg-card)',
-                      borderLeft: isMe ? `3px solid ${player.color}` : '3px solid transparent',
+                      background: owner ? `${owner.color}18` : 'var(--bg-card)',
+                      borderColor: owner ? `${owner.color}40` : 'var(--border)',
+                      boxShadow: isMyTeam ? `0 0 0 1.5px ${owner.color}60` : undefined,
                     }}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
-                      <span className={`font-medium text-[10px] ${isMe ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                        {player.name}
-                      </span>
-                      {isMe && <span className="text-[8px] font-bold uppercase" style={{ color: player.color }}>You</span>}
-                    </div>
-                  </td>
-                  {allColumns.map(({ team }) => {
-                    const isOwned = owned.has(team.id)
-                    return (
-                      <td
-                        key={`${player.id}-${team.id}`}
-                        className="border-b border-r border-[var(--border)]/30 text-center"
-                        style={{
-                          backgroundColor: isOwned
-                            ? `${player.color}55`
-                            : isMe
-                            ? `${player.color}10`
-                            : undefined,
-                          height: '32px',
-                          width: '32px',
-                          minWidth: '32px',
-                        }}
-                      >
-                        {isOwned && (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: player.color }} />
-                          </div>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">Teams ordered by league position · scroll to see all</p>
+                    <TeamCrest team={team} size="xs" />
+                    <span className="text-[9px] text-center text-[var(--text-secondary)] leading-tight line-clamp-1 w-full">
+                      {team.short_name || team.name}
+                    </span>
+                    {owner ? (
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: owner.color }} />
+                        <span className="text-[8px] font-medium leading-none" style={{ color: owner.color }}>
+                          {owner.name.split(' ')[0]}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[8px] text-[var(--text-muted)]">—</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
