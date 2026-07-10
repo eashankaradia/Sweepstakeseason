@@ -10,6 +10,7 @@ import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { formatDateTime } from '@/lib/utils'
 import type { Competition, Team, Fixture } from '@/lib/supabase/types'
+import Link from 'next/link'
 
 type Player = { id: string; name: string; color: string }
 type FixtureRow = Fixture & { competition: Competition; home_team: Team; away_team: Team }
@@ -121,7 +122,8 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+    <Link href={`/fixtures/${fixture.id}`} className="block">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors">
       {/* Meta row */}
       <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[10px] text-[var(--text-muted)]">
         <Badge
@@ -187,6 +189,7 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
         </div>
       )}
     </div>
+    </Link>
   )
 }
 

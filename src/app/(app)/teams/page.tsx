@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { EmptyState } from '@/components/ui/LoadingSpinner'
 import { createClient } from '@/lib/supabase/server'
 import type { Competition, Team } from '@/lib/supabase/types'
+import Link from 'next/link'
 
 export default async function TeamsPage() {
   const cookieStore = await cookies()
@@ -89,7 +90,8 @@ export default async function TeamsPage() {
                   }}
                 >
                   {teams.map(team => (
-                    <div key={team.id} className="flex items-center gap-2.5 px-3 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] transition-colors">
+                    <Link key={team.id} href={`/teams/${team.id}`}>
+                    <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--border)]/30 transition-colors cursor-pointer">
                       <TeamCrest team={team} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
@@ -117,6 +119,7 @@ export default async function TeamsPage() {
                         <span className="text-[10px] text-[var(--text-muted)] shrink-0">Unassigned</span>
                       )}
                     </div>
+                    </Link>
                   ))}
                 </div>
               </div>

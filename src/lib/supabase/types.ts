@@ -296,6 +296,7 @@ export interface Database {
           draws: number
           losses: number
           matches_played: number
+          bonus_points: number
           last_calculated_at: string
         }
         Insert: {
@@ -306,6 +307,7 @@ export interface Database {
           draws?: number
           losses?: number
           matches_played?: number
+          bonus_points?: number
         }
         Update: {
           total_points?: number
@@ -313,6 +315,7 @@ export interface Database {
           draws?: number
           losses?: number
           matches_played?: number
+          bonus_points?: number
           last_calculated_at?: string
         }
       }
@@ -371,6 +374,64 @@ export interface Database {
           setting_value?: Json | null
           updated_at?: string
         }
+      }
+      power_up_activations: {
+        Row: {
+          id: string
+          league_id: string
+          player_id: string
+          power_up_type: 'double_or_nothing' | 'reverse'
+          fixture_id: string | null
+          team_id: string | null
+          activated_at: string
+          result: 'win' | 'draw' | 'loss' | 'pending' | null
+          points_delta: number | null
+          season_month: string | null
+          status: 'pending' | 'applied' | 'cancelled'
+        }
+        Insert: {
+          league_id: string
+          player_id: string
+          power_up_type: 'double_or_nothing' | 'reverse'
+          fixture_id?: string | null
+          team_id?: string | null
+          result?: 'win' | 'draw' | 'loss' | 'pending' | null
+          points_delta?: number | null
+          season_month?: string | null
+          status?: 'pending' | 'applied' | 'cancelled'
+        }
+        Update: {
+          result?: 'win' | 'draw' | 'loss' | 'pending' | null
+          points_delta?: number | null
+          status?: 'pending' | 'applied' | 'cancelled'
+        }
+      }
+      activity_feed: {
+        Row: {
+          id: string
+          league_id: string
+          event_type: string
+          player_id: string | null
+          team_id: string | null
+          fixture_id: string | null
+          title: string
+          body: string | null
+          points_delta: number | null
+          metadata: Json | null
+          created_at: string
+        }
+        Insert: {
+          league_id: string
+          event_type: string
+          player_id?: string | null
+          team_id?: string | null
+          fixture_id?: string | null
+          title: string
+          body?: string | null
+          points_delta?: number | null
+          metadata?: Json | null
+        }
+        Update: Record<string, never>
       }
     }
     Views: Record<string, never>

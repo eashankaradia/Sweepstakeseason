@@ -9,7 +9,7 @@ const navItems = [
     label: 'Home',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-        <path d="M3 12L12 3l9 9" /><path d="M9 21V12h6v9" /><path d="M3 12v9h18V12" />
+        <path d="M3 12L12 3l9 9" /><path d="M9 21V12h6v9" />
       </svg>
     ),
   },
@@ -41,11 +41,11 @@ const navItems = [
     ),
   },
   {
-    href: '/teams',
-    label: 'Teams',
+    href: '/activity',
+    label: 'Activity',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
       </svg>
     ),
   },
