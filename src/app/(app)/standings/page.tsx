@@ -50,10 +50,54 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'overall' | 'monthly' | 'tables' | 'heatmap'>('overall')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [espnStandings, setEspnStandings] = useState<Map<string, any[]>>(new Map())
+  const [espnLoading, setEspnLoading] = useState(false)
 
   const supabase = createClient()
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (tab !== 'tables' || competitions.length === 0 || espnStandings.size > 0) return
+    const domestic = competitions.filter((c: any) => c.competition_type === 'domestic_league' && c.espn_slug)
+    if (domestic.length === 0) return
+    setEspnLoading(true)
+    const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
+    Promise.all(domestic.map(async (comp: any) => {
+      try {
+        const res = await fetch(`${ESPN_BASE}/${comp.espn_slug}/standings`)
+        if (!res.ok) return null
+        const data = await res.json()
+        const entries = data?.standings?.entries ?? data?.children?.[0]?.standings?.entries ?? []
+        const rows = entries.map((entry: any, i: number) => {
+          const stats: Record<string, number> = {}
+          for (const s of (entry.stats ?? [])) stats[s.name] = Number(s.value ?? 0)
+          return {
+            espnTeamId: String(entry.team?.id ?? ''),
+            teamName: entry.team?.displayName ?? '',
+            abbr: entry.team?.abbreviation ?? '',
+            position: stats.rank ?? stats.position ?? i + 1,
+            played: stats.gamesPlayed ?? 0,
+            wins: stats.wins ?? 0,
+            draws: stats.ties ?? stats.draws ?? 0,
+            losses: stats.losses ?? 0,
+            gf: stats.pointsFor ?? stats.goalsFor ?? 0,
+            ga: stats.pointsAgainst ?? stats.goalsAgainst ?? 0,
+            gd: stats.pointDifferential ?? 0,
+            points: stats.points ?? 0,
+          }
+        }).sort((a: any, b: any) => a.position - b.position)
+        return { compId: comp.id, rows }
+      } catch { return null }
+    })).then(results => {
+      const map = new Map<string, any[]>()
+      for (const r of results) {
+        if (r) map.set(r.compId, r.rows)
+      }
+      setEspnStandings(map)
+      setEspnLoading(false)
+    })
+  }, [tab, competitions])
 
   async function load() {
     setLoading(true)
@@ -279,6 +323,8 @@ export default function StandingsPage() {
           teamScores={teamScores}
           teamCompetitions={teamCompetitions}
           ownerMap={ownerMap}
+          espnStandings={espnStandings}
+          espnLoading={espnLoading}
         />
       )}
 
@@ -353,17 +399,29 @@ function TablesView({
   teamScores,
   teamCompetitions,
   ownerMap,
+  espnStandings,
+  espnLoading,
 }: {
   competitions: any[]
   teamScores: any[]
   teamCompetitions: any[]
   ownerMap: Map<string, any>
+  espnStandings: Map<string, any[]>
+  espnLoading: boolean
 }) {
   if (competitions.length === 0) {
     return <EmptyState icon="📊" title="No competitions" description="Enable competitions in Settings." />
   }
 
-  // Group team_competitions by competition_id → unique teams
+  // Build espn_team_id → our team + owner
+  const espnTeamLookup = new Map<string, { team: any; owner: any }>()
+  for (const tc of teamCompetitions) {
+    if (!tc.teams?.espn_team_id) continue
+    const owner = ownerMap.get(tc.teams.id)
+    espnTeamLookup.set(String(tc.teams.espn_team_id), { team: tc.teams, owner })
+  }
+
+  // Group team_competitions by competition_id → unique teams (for non-ESPN tables)
   const compTeamMap = new Map<string, any[]>()
   for (const tc of teamCompetitions) {
     if (!tc.teams) continue
@@ -373,61 +431,40 @@ function TablesView({
   }
 
   const typeOrder: Record<string, number> = { domestic_league: 0, european: 1, domestic_cup: 2 }
+  const sortedComps = [...competitions].sort((a, b) =>
+    (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
+  )
 
   return (
     <div className="space-y-5">
-      {[...competitions]
-        .sort((a, b) => (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order)
-        .map(comp => {
-          const teams = compTeamMap.get(comp.id) ?? []
-          if (teams.length === 0) return null
+      {espnLoading && (
+        <div className="text-center py-2 text-[10px] text-[var(--text-muted)]">Loading live tables…</div>
+      )}
+      {sortedComps.map(comp => {
+        const isEu = comp.competition_type === 'european'
+        const isCup = comp.competition_type === 'domestic_cup'
+        const isDomestic = comp.competition_type === 'domestic_league'
+        const espnRows = espnStandings.get(comp.id)
+        const totalTeams = espnRows?.length ?? 0
 
-          const rows = teams.map((team: any) => {
-            // Prefer competition-specific scores, fall back to aggregate
-            let scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === comp.id)
-            if (scores.length === 0) {
-              scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === null)
-            }
-            if (scores.length === 0) {
-              scores = teamScores.filter((ts: any) => ts.team_id === team.id)
-            }
-            const aggGF = scores.reduce((s: number, ts: any) => s + (ts.goals_for ?? 0), 0)
-            const aggGA = scores.reduce((s: number, ts: any) => s + (ts.goals_against ?? 0), 0)
-            const aggW = scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0)
-            const aggD = scores.reduce((s: number, ts: any) => s + (ts.draws ?? 0), 0)
-            const aggL = scores.reduce((s: number, ts: any) => s + (ts.losses ?? 0), 0)
-            const aggPts = scores.reduce((s: number, ts: any) => s + (ts.total_points ?? 0), 0)
-            const aggP = scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0)
-            return {
-              team,
-              p: aggP,
-              w: aggW,
-              d: aggD,
-              l: aggL,
-              gf: aggGF,
-              ga: aggGA,
-              gd: aggGF - aggGA,
-              pts: aggPts,
-              owner: ownerMap.get(team.id),
-              leaguePos: team.league_position,
-            }
-          }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+        const compHeader = (
+          <div className={`px-3 py-2 border-b border-[var(--border)] flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
+            <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${isEu ? 'bg-purple-500/20 text-purple-400' : isCup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'}`}>
+              {comp.short_name}
+            </div>
+            <span className="font-semibold text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
+            {espnRows && <span className="text-[9px] text-[var(--text-muted)]">Live</span>}
+            <Badge variant={isEu ? 'purple' : isCup ? 'warning' : 'muted'} className="text-[9px]">
+              {isCup ? 'Cup' : isEu ? 'European' : 'League'}
+            </Badge>
+          </div>
+        )
 
-          const isEu = comp.competition_type === 'european'
-          const isCup = comp.competition_type === 'domestic_cup'
-
+        // ESPN live table for domestic leagues
+        if (isDomestic && espnRows && espnRows.length > 0) {
           return (
             <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
-              <div className={`px-3 py-2 border-b border-[var(--border)] flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
-                <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${isEu ? 'bg-purple-500/20 text-purple-400' : isCup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'}`}>
-                  {comp.short_name}
-                </div>
-                <span className="font-semibold text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
-                <Badge variant={isEu ? 'purple' : isCup ? 'warning' : 'muted'} className="text-[9px]">
-                  {isCup ? 'Cup' : isEu ? 'European' : 'League'}
-                </Badge>
-              </div>
-
+              {compHeader}
               <div className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
                 <span className="text-[9px] text-[var(--text-muted)] text-center">#</span>
                 <span />
@@ -439,42 +476,132 @@ function TablesView({
                 <span className="text-[9px] text-[var(--text-muted)] text-center">GD</span>
                 <span className="text-[9px] text-[var(--text-muted)] text-right">Pts</span>
               </div>
-
-              {rows.map((row, idx) => {
+              {espnRows.map((row: any, idx: number) => {
+                const lookup = espnTeamLookup.get(row.espnTeamId)
+                const team = lookup?.team
+                const owner = lookup?.owner
                 const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                const pos = idx + 1
+                // Zone indicator: CL=1-4, EL=5, ECL=6, Relegation=last 3
+                const zoneColor =
+                  pos <= 4 ? '#22c55e' :
+                  pos === 5 ? '#f97316' :
+                  pos === 6 ? '#eab308' :
+                  pos > totalTeams - 3 ? '#ef4444' :
+                  'transparent'
                 return (
                   <div
-                    key={row.team.id}
-                    className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)]"
-                    style={row.owner ? { borderLeft: `2px solid ${row.owner.color}60` } : { borderLeft: '2px solid transparent' }}
+                    key={row.espnTeamId}
+                    className={`grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 ${owner ? 'bg-[var(--accent)]/3' : 'bg-[var(--bg-card)]'}`}
+                    style={{
+                      borderLeft: owner ? `3px solid ${owner.color}` : `3px solid ${zoneColor}20`,
+                    }}
                   >
-                    <span className="text-[10px] text-[var(--text-muted)] text-center">{idx + 1}</span>
-                    <TeamCrest team={row.team} size="xs" />
+                    <span className="text-[10px] text-[var(--text-muted)] text-center font-medium">{pos}</span>
+                    {team ? <TeamCrest team={team} size="xs" /> : <span className="w-4 h-4 rounded-full bg-[var(--border)] shrink-0" />}
                     <div className="min-w-0">
-                      <span className="text-xs text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
-                      <div className="flex items-center gap-1">
-                        {row.leaguePos != null && (
-                          <span className="text-[9px] text-[var(--text-muted)] leading-none">#{row.leaguePos}</span>
-                        )}
-                        {row.owner && (
-                          <span className="text-[9px] leading-none font-medium" style={{ color: row.owner.color }}>
-                            {row.owner.name}
-                          </span>
-                        )}
-                      </div>
+                      <span className="text-xs text-[var(--text-primary)] truncate block leading-tight font-medium">
+                        {team?.short_name || row.teamName}
+                      </span>
+                      {owner && (
+                        <span className="text-[9px] font-semibold leading-none" style={{ color: owner.color }}>
+                          {owner.name}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[10px] text-[var(--text-secondary)] text-center">{row.p}</span>
-                    <span className="text-[10px] text-emerald-400 text-center">{row.w}</span>
-                    <span className="text-[10px] text-amber-400 text-center">{row.d}</span>
-                    <span className="text-[10px] text-red-400 text-center">{row.l}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)] text-center">{row.played}</span>
+                    <span className="text-[10px] text-emerald-400 text-center">{row.wins}</span>
+                    <span className="text-[10px] text-amber-400 text-center">{row.draws}</span>
+                    <span className="text-[10px] text-red-400 text-center">{row.losses}</span>
                     <span className={`text-[10px] text-center font-medium ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                    <span className="text-[10px] font-bold text-[var(--text-primary)] text-right">{row.pts}</span>
+                    <span className="text-[10px] font-bold text-[var(--text-primary)] text-right">{row.points}</span>
                   </div>
                 )
               })}
+              {totalTeams > 0 && (
+                <div className="px-3 py-1.5 border-t border-[var(--border)]/50 bg-[var(--bg-card)] flex items-center gap-3 flex-wrap">
+                  <LegendDot color="#22c55e" label="Champions League" />
+                  <LegendDot color="#f97316" label="Europa League" />
+                  <LegendDot color="#eab308" label="Conference League" />
+                  <LegendDot color="#ef4444" label="Relegation" />
+                </div>
+              )}
             </div>
           )
-        })}
+        }
+
+        // Sweepstake table fallback (cups / European / no ESPN data)
+        const teams = compTeamMap.get(comp.id) ?? []
+        if (teams.length === 0) return null
+        const rows = teams.map((team: any) => {
+          let scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === comp.id)
+          if (scores.length === 0) scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === null)
+          if (scores.length === 0) scores = teamScores.filter((ts: any) => ts.team_id === team.id)
+          const aggGF = scores.reduce((s: number, ts: any) => s + (ts.goals_for ?? 0), 0)
+          const aggGA = scores.reduce((s: number, ts: any) => s + (ts.goals_against ?? 0), 0)
+          const aggW = scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0)
+          const aggD = scores.reduce((s: number, ts: any) => s + (ts.draws ?? 0), 0)
+          const aggL = scores.reduce((s: number, ts: any) => s + (ts.losses ?? 0), 0)
+          const aggPts = scores.reduce((s: number, ts: any) => s + (ts.total_points ?? 0), 0)
+          const aggP = scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0)
+          return {
+            team, p: aggP, w: aggW, d: aggD, l: aggL,
+            gf: aggGF, ga: aggGA, gd: aggGF - aggGA, pts: aggPts,
+            owner: ownerMap.get(team.id),
+          }
+        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+
+        return (
+          <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
+            {compHeader}
+            <div className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
+              <span className="text-[9px] text-[var(--text-muted)] text-center">#</span>
+              <span />
+              <span className="text-[9px] text-[var(--text-muted)]">Club</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-center">P</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-center">W</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-center">D</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-center">L</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-center">GD</span>
+              <span className="text-[9px] text-[var(--text-muted)] text-right">Pts</span>
+            </div>
+            {rows.map((row, idx) => {
+              const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+              return (
+                <div
+                  key={row.team.id}
+                  className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)]"
+                  style={row.owner ? { borderLeft: `3px solid ${row.owner.color}` } : { borderLeft: '3px solid transparent' }}
+                >
+                  <span className="text-[10px] text-[var(--text-muted)] text-center">{idx + 1}</span>
+                  <TeamCrest team={row.team} size="xs" />
+                  <div className="min-w-0">
+                    <span className="text-xs text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
+                    {row.owner && (
+                      <span className="text-[9px] font-semibold leading-none" style={{ color: row.owner.color }}>{row.owner.name}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-[var(--text-secondary)] text-center">{row.p}</span>
+                  <span className="text-[10px] text-emerald-400 text-center">{row.w}</span>
+                  <span className="text-[10px] text-amber-400 text-center">{row.d}</span>
+                  <span className="text-[10px] text-red-400 text-center">{row.l}</span>
+                  <span className={`text-[10px] text-center font-medium ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
+                  <span className="text-[10px] font-bold text-[var(--text-primary)] text-right">{row.pts}</span>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-[9px] text-[var(--text-muted)]">{label}</span>
     </div>
   )
 }
