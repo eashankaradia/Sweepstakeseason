@@ -29,6 +29,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
   const [espnData, setEspnData] = useState<any>(null)
   const [powerUps, setPowerUps] = useState<any[]>([])
   const [allOwners, setAllOwners] = useState<Map<string, Player>>(new Map())
+  const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [liveLoading, setLiveLoading] = useState(false)
   const supabase = createClient()
@@ -47,7 +48,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     if (!fix) { setLoading(false); return }
     setFixture(fix)
 
-    const [{ data: assignments }, { data: pups }, { data: players }] = await Promise.all([
+    const [{ data: assignments }, { data: pups }, { data: players }, { data: playerScores }] = await Promise.all([
       supabase.from('player_team_assignments')
         .select('team_id, players(id,name,color)')
         .eq('league_id', fix.league_id),
@@ -56,6 +57,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         .eq('fixture_id', params.id)
         .eq('status', 'pending'),
       supabase.from('players').select('id,name,color').eq('league_id', fix.league_id),
+      supabase.from('player_scores').select('player_id, total_points').eq('league_id', fix.league_id),
     ])
 
     const aMap = new Map((assignments ?? []).map((a: any) => [a.team_id, a.players]))
@@ -66,6 +68,9 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     // Map player_id → player for standings projection
     const pMap = new Map((players ?? []).map((p: any) => [p.id, p]))
     setAllOwners(pMap)
+
+    const psMap = new Map((playerScores ?? []).map((ps: any) => [ps.player_id, ps.total_points as number]))
+    setAllPlayerScores(psMap)
 
     const [{ data: hs }, { data: as_ }] = await Promise.all([
       supabase.from('team_scores').select('*').eq('league_id', fix.league_id).eq('team_id', fix.home_team_id).maybeSingle(),
@@ -298,6 +303,20 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         <TeamStatCard team={fixture.away_team} score={awayScore} owner={awayOwner} />
       </div>
 
+      {/* Projected leaderboard (live only — points not yet synced) */}
+      {isLive && homePts != null && awayPts != null && allOwners.size > 0 && (
+        <ProjectedLeaderboard
+          allOwners={allOwners}
+          allPlayerScores={allPlayerScores}
+          homeOwner={homeOwner}
+          awayOwner={awayOwner}
+          homePts={homePts}
+          awayPts={awayPts}
+          homeDon={homeDon}
+          awayDon={awayDon}
+        />
+      )}
+
       {/* Giant Killer check (informational) */}
       {isCompleted && compType === 'domestic_league' && hScore != null && aScore != null && (
         <GiantKillerCheck
@@ -312,6 +331,63 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+function ProjectedLeaderboard({
+  allOwners, allPlayerScores, homeOwner, awayOwner, homePts, awayPts, homeDon, awayDon,
+}: {
+  allOwners: Map<string, Player>
+  allPlayerScores: Map<string, number>
+  homeOwner: Player | null
+  awayOwner: Player | null
+  homePts: number
+  awayPts: number
+  homeDon: any
+  awayDon: any
+}) {
+  const projected = [...allOwners.entries()].map(([pid, player]) => {
+    let pts = allPlayerScores.get(pid) ?? 0
+    let delta = 0
+    if (homeOwner && pid === homeOwner.id) delta = projectedPtsWithDon(homePts, homeDon)
+    if (awayOwner && pid === awayOwner.id) delta = projectedPtsWithDon(awayPts, awayDon)
+    return { player, pts: pts + delta, delta }
+  }).sort((a, b) => b.pts - a.pts)
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+        <p className="text-xs font-semibold text-[var(--text-primary)]">If this score stands…</p>
+      </div>
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+        {projected.map(({ player, pts, delta }, i) => {
+          const isAffected = delta !== 0
+          const deltaColor = delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+          return (
+            <div
+              key={player.id}
+              className={`flex items-center gap-2.5 px-3 py-2 border-b border-[var(--border)] last:border-0 ${isAffected ? 'bg-[var(--accent)]/5' : ''}`}
+            >
+              <span className="text-[10px] text-[var(--text-muted)] w-4 shrink-0 text-center font-medium">{i + 1}</span>
+              <div
+                className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
+                style={{ backgroundColor: player.color }}
+              >
+                {player.name.charAt(0)}
+              </div>
+              <span className="text-xs font-medium text-[var(--text-primary)] flex-1 truncate">{player.name}</span>
+              {delta !== 0 && (
+                <span className={`text-[10px] font-semibold ${deltaColor} shrink-0`}>
+                  {delta > 0 ? '+' : ''}{delta}
+                </span>
+              )}
+              <span className="text-xs font-bold text-[var(--text-primary)] shrink-0 w-8 text-right">{pts}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function ProjectedPoints({ pts, raw, hasDon }: { pts: number; raw: number; hasDon: boolean }) {
   const color = raw === 3 ? 'text-emerald-400 bg-emerald-400/10' : raw === 1 ? 'text-amber-400 bg-amber-400/10' : 'text-[var(--text-muted)] bg-[var(--border)]'
