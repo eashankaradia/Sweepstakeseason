@@ -402,14 +402,28 @@ function WildcardExplainer() {
         <div className="border-t border-[var(--border)] px-3 py-3 space-y-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-sm">⚡</span>
+              <span className="text-sm">🎲</span>
               <p className="font-semibold text-sm text-[var(--text-primary)]">Double or Nothing</p>
               <Badge variant="success" className="text-[9px] ml-auto">1× per month</Badge>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Pick a specific upcoming match for one of your clubs. If they <span className="text-emerald-400 font-medium">win</span>, you score double points for that game. If they <span className="text-red-400 font-medium">lose</span>, you score zero. Draws are unaffected.
+              Pick a specific upcoming match for one of your clubs. The stakes are high:
             </p>
-            <p className="text-[10px] text-[var(--text-muted)]">
+            <div className="grid grid-cols-3 gap-1.5 mt-1">
+              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-1.5 text-center">
+                <p className="text-[10px] font-bold text-emerald-400">Win</p>
+                <p className="text-[11px] font-black text-emerald-400">×2 pts</p>
+              </div>
+              <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-1.5 text-center">
+                <p className="text-[10px] font-bold text-amber-400">Draw</p>
+                <p className="text-[11px] font-black text-amber-400">−1 pt</p>
+              </div>
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-2 py-1.5 text-center">
+                <p className="text-[10px] font-bold text-red-400">Loss</p>
+                <p className="text-[11px] font-black text-red-400">−3 pts</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
               Each club can only be used once per season. You get one activation per calendar month.
             </p>
           </div>
@@ -418,19 +432,33 @@ function WildcardExplainer() {
             <div className="flex items-center gap-2">
               <span className="text-sm">🔄</span>
               <p className="font-semibold text-sm text-[var(--text-primary)]">Reverse</p>
-              <Badge variant="purple" className="text-[9px] ml-auto">1× per season</Badge>
+              <Badge variant="purple" className="text-[9px] ml-auto">once per player</Badge>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              At the end of any month, flip your single worst result. A <span className="text-red-400 font-medium">loss</span> becomes a <span className="text-emerald-400 font-medium">win</span> — the points swing works both ways.
+              Play this on any fixture that includes an opponent's club. For that match only, <span className="text-[var(--accent)] font-medium">ownership of both clubs swaps</span> between you and that player — you get their club's points, they get yours.
             </p>
             <p className="text-[10px] text-[var(--text-muted)]">
-              One use for the entire season. Choose your moment wisely.
+              You can only target each player once per season. Pick your moment — a fixture where their star club is struggling and yours is flying.
+            </p>
+          </div>
+
+          <div className="border-t border-[var(--border)]/50 pt-3 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚔️</span>
+              <p className="font-semibold text-sm text-[var(--text-primary)]">Giant Killer Bonus</p>
+              <Badge variant="warning" className="text-[9px] ml-auto">Auto-awarded</Badge>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              If one of your clubs beats a team that started the match 5+ league places above them, you automatically earn a Giant Killer bonus — no activation needed.
+            </p>
+            <p className="text-[10px] text-[var(--text-muted)]">
+              This rewards holding onto lower-league clubs. The bigger the upset, the better.
             </p>
           </div>
 
           <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)]/50 px-2.5 py-2">
             <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-              💡 <span className="text-[var(--text-secondary)]">Tip:</span> Save Reverse for a month where one bad result cost you heavily. D-o-N is best used when your team has a favourable fixture at home against a weaker side.
+              💡 <span className="text-[var(--text-secondary)]">Strategy:</span> Use D-o-N when your team has a must-win home fixture. Reverse is strongest in a week where you are strong and an opponent is vulnerable.
             </p>
           </div>
         </div>
