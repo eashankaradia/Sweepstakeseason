@@ -7,6 +7,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -122,13 +123,12 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
           <p className="text-xs text-[var(--text-secondary)]">{team.country}</p>
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
             {competitions.map((c: any) => (
-              <Badge
+              <CompetitionBadge
                 key={c.id}
-                variant={c.competition_type === 'european' ? 'purple' : 'muted'}
-                className="text-[9px]"
-              >
-                {c.short_name}
-              </Badge>
+                name={c.name}
+                shortName={c.short_name}
+                type={c.competition_type}
+              />
             ))}
             {team.league_position && (
               <Badge variant="muted" className="text-[9px]">
@@ -293,9 +293,13 @@ function FixtureRow({ fixture, teamId }: { fixture: any; teamId: string }) {
   return (
     <Link href={`/fixtures/${fixture.id}`}>
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 flex items-center gap-2 hover:border-[var(--accent)]/40 transition-colors">
-        <Badge variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'muted'} className="text-[9px] shrink-0">
-          {(fixture.competition as any)?.short_name}
-        </Badge>
+        {fixture.competition && (
+          <CompetitionBadge
+            shortName={(fixture.competition as any).short_name}
+            name={(fixture.competition as any).name}
+            type={(fixture.competition as any).competition_type}
+          />
+        )}
         <span className="text-xs text-[var(--text-secondary)] flex-1 truncate">
           {isHome ? 'vs' : '@'} {oppTeam?.name}
         </span>
