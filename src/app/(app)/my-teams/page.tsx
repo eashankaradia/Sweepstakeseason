@@ -10,6 +10,11 @@ import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
+function formatMonth(ym: string) {
+  const [y, m] = ym.split('-')
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
 export default function MyTeamsPage() {
   const [data, setData] = useState<any>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -20,6 +25,8 @@ export default function MyTeamsPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'mine' | 'all'>('mine')
+  const [donTeamId, setDonTeamId] = useState<string | null>(null)
+  const [donMonth, setDonMonth] = useState<string>('')
 
   useEffect(() => { loadData() }, [])
 
@@ -44,13 +51,11 @@ export default function MyTeamsPage() {
     const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
     setMyPlayerId(myPlayer?.id ?? null)
 
-    // Map teamId → first competition (for display)
     const teamCompMap = new Map<string, any>()
     for (const row of (teamCompData ?? []) as any[]) {
       if (!teamCompMap.has(row.team_id)) teamCompMap.set(row.team_id, row.competitions)
     }
 
-    // Map teamId → array of all competitions (for multi-comp display)
     const teamAllComps = new Map<string, any[]>()
     for (const row of (teamCompData ?? []) as any[]) {
       if (!teamAllComps.has(row.team_id)) teamAllComps.set(row.team_id, [])
@@ -62,7 +67,6 @@ export default function MyTeamsPage() {
       const teams = playerAssignments.map((a: any) => {
         const team = a.teams
         if (!team) return null
-        // Sum scores across all competition_id rows for this team
         const scores = (teamScores ?? []).filter((ts: any) => ts.team_id === team.id)
         const score = scores.length > 0 ? {
           wins: scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0),
@@ -91,7 +95,7 @@ export default function MyTeamsPage() {
           .eq('league_id', leagueId)
           .eq('status', 'scheduled')
           .order('kickoff_time')
-          .limit(20),
+          .limit(60),
       ])
       setPowerUps(pups ?? [])
       setUpcomingFixtures((upFix ?? []) as any[])
@@ -100,25 +104,26 @@ export default function MyTeamsPage() {
     setLoading(false)
   }
 
-  async function activateDoubleOrNothing(teamId: string, fixtureId: string) {
+  async function activateDoubleOrNothing(teamId: string, fixtureIds: string[], month: string) {
     const supabase = createClient()
     const leagueId = getLeagueIdCookie()
-    if (!leagueId || !myPlayerId) return
+    if (!leagueId || !myPlayerId || fixtureIds.length === 0) return
     setActivating(teamId)
-    const currentMonth = new Date().toISOString().substring(0, 7)
-    const { error } = await supabase.from('power_up_activations').insert({
+    const rows = fixtureIds.map(fid => ({
       league_id: leagueId,
       player_id: myPlayerId,
       power_up_type: 'double_or_nothing',
-      fixture_id: fixtureId,
+      fixture_id: fid,
       team_id: teamId,
-      season_month: currentMonth,
+      season_month: month,
       status: 'pending',
-    })
+    }))
+    const { error } = await supabase.from('power_up_activations').insert(rows)
     setActivating(null)
     if (!error) {
-      setSuccessMsg('⚡ Double or Nothing activated!')
-      setTimeout(() => setSuccessMsg(''), 3000)
+      setSuccessMsg(`⚡ Double or Nothing locked in for ${formatMonth(month)}! ${fixtureIds.length} game${fixtureIds.length !== 1 ? 's' : ''} covered.`)
+      setTimeout(() => setSuccessMsg(''), 4000)
+      setDonTeamId(null)
       loadData()
     }
   }
@@ -143,23 +148,19 @@ export default function MyTeamsPage() {
     )
   }
 
-  const currentMonth = new Date().toISOString().substring(0, 7)
-  const usedThisMonth = powerUps.filter((p: any) => p.season_month === currentMonth && p.power_up_type === 'double_or_nothing').length
-  const monthlyLimitUsed = usedThisMonth >= 1
+  const usedMonths = new Set(
+    powerUps
+      .filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled')
+      .map((p: any) => p.season_month)
+  )
   const usedTeamIds = new Set(powerUps.filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled').map((p: any) => p.team_id))
-
-  const teamNextFixture = new Map<string, any>()
-  for (const fix of upcomingFixtures) {
-    if (!teamNextFixture.has(fix.home_team_id)) teamNextFixture.set(fix.home_team_id, fix)
-    if (!teamNextFixture.has(fix.away_team_id)) teamNextFixture.set(fix.away_team_id, fix)
-  }
 
   const myEntry = playerEntries.find((e: any) => e.isMe)
 
   return (
     <AppShell title="My Teams">
       {successMsg && (
-        <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium px-3 py-2.5 rounded-xl">
+        <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium px-3 py-2.5 rounded-xl animate-pulse">
           {successMsg}
         </div>
       )}
@@ -176,10 +177,14 @@ export default function MyTeamsPage() {
           <MineView
             entry={myEntry}
             powerUps={powerUps}
-            monthlyLimitUsed={monthlyLimitUsed}
+            usedMonths={usedMonths}
             usedTeamIds={usedTeamIds}
-            teamNextFixture={teamNextFixture}
+            upcomingFixtures={upcomingFixtures}
             activating={activating}
+            donTeamId={donTeamId}
+            setDonTeamId={setDonTeamId}
+            donMonth={donMonth}
+            setDonMonth={setDonMonth}
             onActivate={activateDoubleOrNothing}
           />
         ) : (
@@ -197,23 +202,30 @@ export default function MyTeamsPage() {
 function MineView({
   entry,
   powerUps,
-  monthlyLimitUsed,
+  usedMonths,
   usedTeamIds,
-  teamNextFixture,
+  upcomingFixtures,
   activating,
+  donTeamId,
+  setDonTeamId,
+  donMonth,
+  setDonMonth,
   onActivate,
 }: {
   entry: any
   powerUps: any[]
-  monthlyLimitUsed: boolean
+  usedMonths: Set<string>
   usedTeamIds: Set<string>
-  teamNextFixture: Map<string, any>
+  upcomingFixtures: any[]
   activating: string | null
-  onActivate: (teamId: string, fixtureId: string) => void
+  donTeamId: string | null
+  setDonTeamId: (id: string | null) => void
+  donMonth: string
+  setDonMonth: (m: string) => void
+  onActivate: (teamId: string, fixtureIds: string[], month: string) => void
 }) {
   const { player, teams, total } = entry
 
-  // Summary stats across all my teams
   const totalW = teams.reduce((s: number, t: any) => s + (t.score?.wins ?? 0), 0)
   const totalD = teams.reduce((s: number, t: any) => s + (t.score?.draws ?? 0), 0)
   const totalL = teams.reduce((s: number, t: any) => s + (t.score?.losses ?? 0), 0)
@@ -221,22 +233,43 @@ function MineView({
   const totalGA = teams.reduce((s: number, t: any) => s + (t.score?.goals_against ?? 0), 0)
   const totalGD = totalGF - totalGA
 
+  // Available months: next 4 calendar months from today
+  const now = new Date()
+  const availableMonths = Array.from({ length: 4 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    return d.toISOString().substring(0, 7)
+  })
+
+  function getTeamFixturesInMonth(teamId: string, month: string) {
+    return upcomingFixtures.filter(f => {
+      const fixMonth = (f.kickoff_time as string).substring(0, 7)
+      return fixMonth === month && (f.home_team_id === teamId || f.away_team_id === teamId)
+    })
+  }
+
+  function openDon(teamId: string) {
+    setDonTeamId(teamId)
+    // Default to first month that has fixtures
+    const firstMonth = availableMonths.find(m => !usedMonths.has(m) && getTeamFixturesInMonth(teamId, m).length > 0)
+    setDonMonth(firstMonth ?? availableMonths[0])
+  }
+
   return (
     <div className="space-y-3">
       {/* My summary card */}
       <div
-        className="rounded-xl border p-4"
+        className="rounded-2xl border p-4"
         style={{ borderColor: `${player.color}40`, backgroundColor: `${player.color}08` }}
       >
         <div className="flex items-center gap-3 mb-4">
           <Avatar name={player.name} color={player.color} size="lg" />
           <div className="flex-1 min-w-0">
             <p className="font-bold text-base text-[var(--text-primary)]">{player.name}</p>
-            <p className="text-xs text-[var(--text-secondary)]">{teams.length} teams</p>
+            <p className="text-xs text-[var(--text-secondary)]">{teams.length} clubs in your squad</p>
           </div>
           <div className="text-right">
-            <p className="font-bold text-2xl text-[var(--text-primary)]">{total}</p>
-            <p className="text-xs text-[var(--text-secondary)]">pts</p>
+            <p className="font-black text-3xl" style={{ color: player.color }}>{total}</p>
+            <p className="text-xs text-[var(--text-secondary)] -mt-0.5">points</p>
           </div>
         </div>
 
@@ -248,7 +281,7 @@ function MineView({
             { label: 'GD', value: totalGD >= 0 ? `+${totalGD}` : totalGD, color: totalGD > 0 ? 'text-emerald-400' : totalGD < 0 ? 'text-red-400' : 'text-[var(--text-muted)]' },
             { label: 'GF', value: totalGF, color: 'text-[var(--text-secondary)]' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-lg bg-[var(--bg-card)]/60 py-2">
+            <div key={label} className="rounded-xl bg-[var(--bg-card)]/70 py-2">
               <p className={`font-bold text-sm ${color}`}>{value}</p>
               <p className="text-[9px] text-[var(--text-muted)] mt-0.5">{label}</p>
             </div>
@@ -257,19 +290,21 @@ function MineView({
       </div>
 
       {/* Power-up tiles */}
-      <PowerUpTiles monthlyLimitUsed={monthlyLimitUsed} powerUps={powerUps} />
+      <PowerUpTiles usedMonths={usedMonths} powerUps={powerUps} />
 
       {/* Teams list */}
       <div className="space-y-2">
         {teams.map(({ team, score, competition, allComps }: any) => {
-          const nextFix = teamNextFixture.get(team.id)
           const alreadyUsed = usedTeamIds.has(team.id)
-          const pendingForTeam = powerUps.find((p: any) => p.team_id === team.id && p.status === 'pending')
-          const canActivate = !monthlyLimitUsed && !alreadyUsed && !!nextFix && !pendingForTeam
+          const pendingForTeam = powerUps.filter((p: any) => p.team_id === team.id && p.status === 'pending')
+          const canActivate = !alreadyUsed && !pendingForTeam.length
           const gf = score?.goals_for ?? 0
           const ga = score?.goals_against ?? 0
           const gd = gf - ga
           const hasStats = score && (score.matches_played ?? 0) > 0
+          const isOpen = donTeamId === team.id
+
+          const monthFixtures = isOpen && donMonth ? getTeamFixturesInMonth(team.id, donMonth) : []
 
           return (
             <div key={team.id} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
@@ -285,19 +320,19 @@ function MineView({
                     {allComps.filter(Boolean).map((comp: any) => (
                       <Badge
                         key={comp.id}
-                        variant={comp.competition_type === 'european' ? 'purple' : comp.competition_type === 'domestic_cup' ? 'warning' : 'muted'}
+                        variant={comp.competition_type === 'european' ? 'purple' : 'muted'}
                         className="text-[9px] px-1 py-0 leading-4"
                       >
                         {comp.short_name}
                       </Badge>
                     ))}
                     {team.league_position && (
-                      <span className="text-[9px] text-[var(--text-muted)]">#{team.league_position} in league</span>
+                      <span className="text-[9px] text-[var(--text-muted)]">#{team.league_position}</span>
                     )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="font-bold text-lg text-[var(--text-primary)]">{score?.total_points ?? 0}</div>
+                  <div className="font-bold text-xl text-[var(--text-primary)]">{score?.total_points ?? 0}</div>
                   <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
                 </div>
               </div>
@@ -319,53 +354,162 @@ function MineView({
                 </div>
               )}
 
-              <div className="border-t border-[var(--border)] px-3 py-2">
-                {pendingForTeam ? (
-                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--accent)]">
-                    <span>⚡</span>
-                    <span className="font-medium">Double or Nothing active</span>
-                    {nextFix && (
-                      <span className="text-[var(--text-muted)]">
-                        · vs {nextFix.home_team_id === team.id ? nextFix.away_team?.name : nextFix.home_team?.name}
-                      </span>
-                    )}
+              {/* D-o-N footer */}
+              <div className="border-t border-[var(--border)]">
+                {pendingForTeam.length > 0 ? (
+                  <div className="px-3 py-2 space-y-1">
+                    {pendingForTeam.map((p: any) => (
+                      <div key={p.id} className="flex items-center gap-1.5 text-[10px] text-[var(--accent)]">
+                        <span>⚡</span>
+                        <span className="font-semibold">D-o-N active · {formatMonth(p.season_month)}</span>
+                      </div>
+                    ))}
                   </div>
                 ) : alreadyUsed ? (
-                  <span className="text-[10px] text-[var(--text-muted)]">⚡ Power-up already used this season</span>
-                ) : nextFix && canActivate ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-[var(--text-muted)]">
-                      Next: {nextFix.home_team_id === team.id ? nextFix.away_team?.name : nextFix.home_team?.name}
-                      {' · '}
-                      {new Date(nextFix.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </span>
+                  <div className="px-3 py-2">
+                    <span className="text-[10px] text-[var(--text-muted)]">⚡ D-o-N used this season</span>
+                  </div>
+                ) : isOpen ? (
+                  <DonPicker
+                    team={team}
+                    availableMonths={availableMonths}
+                    usedMonths={usedMonths}
+                    donMonth={donMonth}
+                    setDonMonth={setDonMonth}
+                    monthFixtures={monthFixtures}
+                    activating={activating}
+                    onConfirm={() => onActivate(team.id, monthFixtures.map(f => f.id), donMonth)}
+                    onCancel={() => setDonTeamId(null)}
+                  />
+                ) : canActivate ? (
+                  <div className="px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-[var(--text-muted)]">⚡ Double or Nothing available</span>
                     <button
-                      onClick={() => onActivate(team.id, nextFix.id)}
-                      disabled={activating === team.id}
-                      className="text-[10px] font-bold text-[var(--accent)] border border-[var(--accent)]/40 px-2.5 py-1 rounded-full hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-40"
+                      onClick={() => openDon(team.id)}
+                      className="text-[10px] font-bold text-[var(--accent)] border border-[var(--accent)]/40 px-2.5 py-1 rounded-full hover:bg-[var(--accent)]/10 transition-colors"
                     >
-                      {activating === team.id ? '...' : '⚡ D-o-N'}
+                      Activate
                     </button>
                   </div>
-                ) : monthlyLimitUsed && nextFix ? (
-                  <span className="text-[10px] text-[var(--text-muted)]">Monthly power-up already used</span>
                 ) : (
-                  <span className="text-[10px] text-[var(--text-muted)]">No upcoming fixtures</span>
+                  <div className="px-3 py-2">
+                    <span className="text-[10px] text-[var(--text-muted)]">No upcoming fixtures</span>
+                  </div>
                 )}
               </div>
             </div>
           )
         })}
       </div>
-
     </div>
   )
 }
 
-function PowerUpTiles({ monthlyLimitUsed, powerUps }: { monthlyLimitUsed: boolean; powerUps: any[] }) {
+function DonPicker({
+  team,
+  availableMonths,
+  usedMonths,
+  donMonth,
+  setDonMonth,
+  monthFixtures,
+  activating,
+  onConfirm,
+  onCancel,
+}: {
+  team: any
+  availableMonths: string[]
+  usedMonths: Set<string>
+  donMonth: string
+  setDonMonth: (m: string) => void
+  monthFixtures: any[]
+  activating: string | null
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="bg-[var(--accent)]/5 border-t border-[var(--accent)]/20 px-3 py-3 space-y-3">
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm">⚡</span>
+        <p className="text-xs font-bold text-[var(--accent)]">Double or Nothing — pick a month</p>
+      </div>
+
+      {/* Month pills */}
+      <div className="flex gap-1.5 flex-wrap">
+        {availableMonths.map(m => {
+          const alreadyUsed = usedMonths.has(m)
+          const isSelected = donMonth === m
+          const label = new Date(m + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+          return (
+            <button
+              key={m}
+              onClick={() => !alreadyUsed && setDonMonth(m)}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${
+                alreadyUsed
+                  ? 'opacity-30 cursor-not-allowed bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]'
+                  : isSelected
+                    ? 'bg-[var(--accent)] text-white border border-[var(--accent)]'
+                    : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]/50'
+              }`}
+            >
+              {alreadyUsed ? `${label} ✓` : label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Fixtures preview */}
+      {monthFixtures.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Games covered ({monthFixtures.length})</p>
+          {monthFixtures.map(f => {
+            const isHome = f.home_team_id === team.id
+            const opp = isHome ? f.away_team : f.home_team
+            return (
+              <div key={f.id} className="flex items-center gap-2 py-1 px-2 rounded-lg bg-[var(--bg-card)]">
+                <span className="text-[9px] font-semibold text-[var(--text-muted)] w-4">{isHome ? 'H' : 'A'}</span>
+                <TeamCrest team={opp} size="xs" />
+                <span className="text-[10px] text-[var(--text-primary)] flex-1 truncate">
+                  {isHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
+                </span>
+                <span className="text-[9px] text-[var(--text-muted)]">
+                  {new Date(f.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-[10px] text-[var(--text-muted)] italic">No fixtures found in {formatMonth(donMonth)}</p>
+      )}
+
+      {/* Confirm / cancel */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={onConfirm}
+          disabled={activating === team.id || monthFixtures.length === 0}
+          className="flex-1 text-xs font-bold bg-[var(--accent)] text-white py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          {activating === team.id ? 'Locking in…' : `⚡ Lock in ${formatMonth(donMonth)}`}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-2 text-xs text-[var(--text-secondary)] rounded-xl hover:bg-[var(--bg)] transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; powerUps: any[] }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const toggle = (id: string) => setExpanded(prev => (prev === id ? null : id))
+
+  const now = new Date()
+  const currentMonth = now.toISOString().substring(0, 7)
+  const monthlyLimitUsed = usedMonths.has(currentMonth)
 
   const tiles = [
     {
@@ -437,7 +581,7 @@ function PowerUpTiles({ monthlyLimitUsed, powerUps }: { monthlyLimitUsed: boolea
             <Badge variant="success" className="text-[9px] ml-auto">1× per month</Badge>
           </div>
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Pick a specific upcoming match for one of your clubs. The result is amplified:
+            Pick a calendar month and lock in one of your clubs. Every result that month is amplified:
           </p>
           <div className="grid grid-cols-3 gap-1.5">
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-center">
@@ -454,7 +598,7 @@ function PowerUpTiles({ monthlyLimitUsed, powerUps }: { monthlyLimitUsed: boolea
             </div>
           </div>
           <p className="text-[10px] text-[var(--text-muted)]">
-            Each club can only be used once per season. You get one activation per calendar month. Activate on a team card below.
+            Each club can only be boosted once per season. One month-boost available per calendar month. Activate on a team card below.
           </p>
         </div>
       )}
@@ -547,7 +691,7 @@ function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myU
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         {competition && (
                           <Badge
-                            variant={competition.competition_type === 'european' ? 'purple' : competition.competition_type === 'domestic_cup' ? 'warning' : 'muted'}
+                            variant={competition.competition_type === 'european' ? 'purple' : 'muted'}
                             className="text-[9px] px-1 py-0 leading-4"
                           >
                             {competition.short_name}

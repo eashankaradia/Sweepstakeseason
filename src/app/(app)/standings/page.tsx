@@ -231,7 +231,7 @@ export default function StandingsPage() {
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
             <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-              <div className="grid grid-cols-[28px_1fr_28px_28px_28px_40px_36px] items-center gap-1 px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
+              <div className="grid grid-cols-[28px_1fr_28px_28px_28px_40px_44px] items-center gap-1 px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
                 <span className="text-[10px] text-[var(--text-muted)] font-medium text-center">#</span>
                 <span className="text-[10px] text-[var(--text-muted)] font-medium">Player</span>
                 <span className="text-[10px] text-[var(--text-muted)] font-medium text-center">W</span>
@@ -244,20 +244,36 @@ export default function StandingsPage() {
               {standings.map((entry, idx) => {
                 const isMe = entry.player.user_id === myUserId
                 const isExpandedPlayer = expanded.has(entry.player.id)
-                const posColor = idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-orange-500' : 'text-[var(--text-muted)]'
-                const posBg = idx === 0 ? 'bg-amber-500/10' : idx === 1 ? 'bg-slate-400/10' : idx === 2 ? 'bg-orange-500/10' : ''
+                const medals = ['🥇', '🥈', '🥉']
                 const gdColor = entry.gd > 0 ? 'text-emerald-400' : entry.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                const ptsColor = idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-orange-400' : 'text-[var(--text-primary)]'
                 return (
-                  <div key={entry.player.id} className={['border-b border-[var(--border)] last:border-0', isMe ? 'bg-[var(--accent)]/5' : 'bg-[var(--bg-card)]'].join(' ')}>
+                  <div
+                    key={entry.player.id}
+                    className="border-b border-[var(--border)] last:border-0"
+                    style={{ background: isMe ? `${entry.player.color}08` : idx === 0 ? 'rgba(251,191,36,0.04)' : 'var(--bg-card)' }}
+                  >
                     <button onClick={() => toggleExpanded(entry.player.id)} className="w-full text-left">
-                      <div className="grid grid-cols-[28px_1fr_28px_28px_28px_40px_36px] items-center gap-1 px-3 py-3">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${posBg} ${posColor}`}>{idx + 1}</div>
+                      <div className="grid grid-cols-[28px_1fr_28px_28px_28px_40px_44px] items-center gap-1 px-3 py-3">
+                        <div className="flex items-center justify-center">
+                          {idx < 3
+                            ? <span className="text-base leading-none">{medals[idx]}</span>
+                            : <span className="text-[11px] font-bold text-[var(--text-muted)]">{idx + 1}</span>
+                          }
+                        </div>
                         <div className="flex items-center gap-2 min-w-0">
                           <Avatar name={entry.player.name} color={entry.player.color} size="sm" />
                           <div className="min-w-0">
-                            <span className="font-medium text-sm text-[var(--text-primary)] truncate block">
+                            <span className="font-semibold text-sm text-[var(--text-primary)] truncate block">
                               {entry.player.name}
-                              {isMe && <span className="ml-1 text-[9px] text-[var(--accent)] font-semibold uppercase tracking-wide">You</span>}
+                              {isMe && (
+                                <span
+                                  className="ml-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                                  style={{ backgroundColor: `${entry.player.color}25`, color: entry.player.color }}
+                                >
+                                  You
+                                </span>
+                              )}
                             </span>
                             {!hasDraft && <span className="text-[10px] text-[var(--text-muted)]">Draft pending</span>}
                           </div>
@@ -268,7 +284,7 @@ export default function StandingsPage() {
                         <span className={`text-xs font-medium text-center ${gdColor}`}>
                           {hasDraft ? (entry.gd > 0 ? `+${entry.gd}` : `${entry.gd}`) : '—'}
                         </span>
-                        <span className="text-sm font-bold text-[var(--text-primary)] text-right">{entry.totalPoints}</span>
+                        <span className={`text-base font-black text-right ${ptsColor}`}>{entry.totalPoints}</span>
                       </div>
                     </button>
 
@@ -626,29 +642,38 @@ function HeatmapView({
     return <EmptyState icon="🗂️" title="No draft yet" description="Run the draft to see the ownership heatmap." />
   }
 
-  const scoringComps = competitions.filter(c => c.competition_type !== 'domestic_cup')
+  const domesticLeague = competitions.find(c => c.competition_type === 'domestic_league')
+  const europeanComps = competitions.filter(c => c.competition_type === 'european')
 
-  const compTeamMap = new Map<string, any[]>()
+  // team_id → all competitions this team is in
+  const teamCompsMap = new Map<string, any[]>()
   for (const tc of teamCompetitions) {
     if (!tc.teams) continue
-    const comp = scoringComps.find(c => c.id === tc.competition_id)
+    const comp = competitions.find(c => c.id === tc.competition_id)
     if (!comp) continue
-    if (!compTeamMap.has(tc.competition_id)) compTeamMap.set(tc.competition_id, [])
-    const list = compTeamMap.get(tc.competition_id)!
-    if (!list.find((t: any) => t.id === tc.teams.id)) list.push(tc.teams)
+    if (!teamCompsMap.has(tc.team_id)) teamCompsMap.set(tc.team_id, [])
+    teamCompsMap.get(tc.team_id)!.push(comp)
   }
 
-  // team_id → player
-  const teamOwnerMap = new Map<string, any>()
+  // All PL teams sorted by position
+  const plTeams = teamCompetitions
+    .filter(tc => tc.competition_id === domesticLeague?.id && tc.teams)
+    .map(tc => tc.teams)
+    .filter((t: any, i: number, arr: any[]) => arr.findIndex((u: any) => u.id === t.id) === i)
+    .sort((a: any, b: any) => (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name))
+
+  // team_id → array of owners
+  const teamOwnersMap = new Map<string, any[]>()
   for (const a of assignments) {
     const player = players.find(p => p.id === a.player_id)
-    if (player) teamOwnerMap.set(a.team_id, player)
+    if (!player) continue
+    if (!teamOwnersMap.has(a.team_id)) teamOwnersMap.set(a.team_id, [])
+    teamOwnersMap.get(a.team_id)!.push(player)
   }
 
   const myPlayer = myUserId ? players.find(p => p.user_id === myUserId) : null
 
-  const hasTeams = scoringComps.some(c => (compTeamMap.get(c.id) ?? []).length > 0)
-  if (!hasTeams) {
+  if (plTeams.length === 0) {
     return <EmptyState icon="🗂️" title="No teams found" description="Add teams to competitions to see the heatmap." />
   }
 
@@ -670,61 +695,72 @@ function HeatmapView({
         })}
       </div>
 
-      {/* Per-competition sections */}
-      {scoringComps.map(comp => {
-        const teams = (compTeamMap.get(comp.id) ?? [])
-          .slice()
-          .sort((a: any, b: any) =>
-            (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name)
-          )
-        if (teams.length === 0) return null
-        const isEu = comp.competition_type === 'european'
+      {/* European comp key */}
+      {europeanComps.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {europeanComps.map(comp => (
+            <span key={comp.id} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400">
+              {comp.short_name}
+            </span>
+          ))}
+          <span className="text-[9px] text-[var(--text-muted)]">= European qualification</span>
+        </div>
+      )}
 
-        return (
-          <div key={comp.id}>
-            <div className="flex items-center gap-2 mb-2">
-              <div
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isEu ? 'bg-purple-500/15 text-purple-400' : 'bg-[var(--accent)]/15 text-[var(--accent)]'}`}
-              >
-                {comp.short_name}
-              </div>
-              <span className="text-xs font-semibold text-[var(--text-secondary)] truncate">{comp.name}</span>
+      {/* PL teams grid — each team shown once */}
+      {domesticLeague && (
+        <div>
+          <div className="flex items-center gap-2 mb-2.5">
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent)]/15 text-[var(--accent)]">
+              {domesticLeague.short_name}
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {teams.map((team: any) => {
-                const owner = teamOwnerMap.get(team.id)
-                const isMyTeam = myPlayer && owner?.id === myPlayer.id
-                return (
-                  <div
-                    key={team.id}
-                    className="rounded-lg p-2 flex flex-col items-center gap-1 border transition-colors"
-                    style={{
-                      background: owner ? `${owner.color}18` : 'var(--bg-card)',
-                      borderColor: owner ? `${owner.color}40` : 'var(--border)',
-                      boxShadow: isMyTeam ? `0 0 0 1.5px ${owner.color}60` : undefined,
-                    }}
-                  >
-                    <TeamCrest team={team} size="xs" />
-                    <span className="text-[9px] text-center text-[var(--text-secondary)] leading-tight line-clamp-1 w-full">
-                      {team.short_name || team.name}
-                    </span>
-                    {owner ? (
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: owner.color }} />
-                        <span className="text-[8px] font-medium leading-none" style={{ color: owner.color }}>
-                          {owner.name.split(' ')[0]}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-[8px] text-[var(--text-muted)]">—</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">{domesticLeague.name}</span>
           </div>
-        )
-      })}
+          <div className="grid grid-cols-3 gap-1.5">
+            {plTeams.map((team: any) => {
+              const owners = teamOwnersMap.get(team.id) ?? []
+              const euComps = (teamCompsMap.get(team.id) ?? []).filter(c => c.competition_type === 'european')
+              const isMyTeam = myPlayer && owners.some(o => o.id === myPlayer.id)
+              const primaryColor = owners[0]?.color
+
+              return (
+                <div
+                  key={team.id}
+                  className="rounded-lg p-2 flex flex-col items-center gap-1 border transition-colors"
+                  style={{
+                    background: primaryColor ? `${primaryColor}14` : 'var(--bg-card)',
+                    borderColor: primaryColor ? `${primaryColor}35` : 'var(--border)',
+                    boxShadow: isMyTeam ? `0 0 0 1.5px ${owners.find(o => o.id === myPlayer?.id)?.color}70` : undefined,
+                  }}
+                >
+                  <TeamCrest team={team} size="xs" />
+                  <span className="text-[9px] text-center text-[var(--text-secondary)] leading-tight line-clamp-1 w-full">
+                    {team.short_name || team.name}
+                  </span>
+                  {euComps.length > 0 && (
+                    <div className="flex gap-0.5 flex-wrap justify-center">
+                      {euComps.map((ec: any) => (
+                        <span key={ec.id} className="text-[7px] font-bold px-1 leading-4 rounded-full bg-purple-500/20 text-purple-400">
+                          {ec.short_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {owners.length > 0 ? (
+                    <div className="flex items-center gap-0.5 flex-wrap justify-center mt-0.5">
+                      {owners.map(owner => (
+                        <div key={owner.id} className="w-2 h-2 rounded-full shrink-0 ring-1 ring-[var(--bg-card)]" style={{ backgroundColor: owner.color }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-[8px] text-[var(--text-muted)]">—</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

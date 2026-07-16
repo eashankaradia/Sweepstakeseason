@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sweepstake Season',
-  description: '2026/27 Club Football Sweepstake — Match Centre, Activity Feed & Power-Ups',
+  title: 'Degenerate Sweepstake',
+  description: '2026/27 Football Sweepstake — Match Centre, Standings & Power-Ups',
 }
 
 export const viewport: Viewport = {

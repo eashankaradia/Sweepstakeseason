@@ -157,7 +157,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     <AppShell title="Match Centre" backHref="/fixtures">
       {/* Competition / meta */}
       <div className="flex items-center gap-2 mb-3">
-        <Badge variant={compType === 'european' ? 'purple' : compType === 'domestic_cup' ? 'warning' : 'default'} className="text-[10px]">
+        <Badge variant={compType === 'european' ? 'purple' : 'default'} className="text-[10px]">
           {(fixture.competition as any)?.short_name}
         </Badge>
         {fixture.round && <span className="text-[10px] text-[var(--text-muted)]">{fixture.round}</span>}

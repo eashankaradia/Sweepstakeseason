@@ -126,10 +126,7 @@ export default function FixturesPage() {
           {competitions.map(c => (
             <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
               {c.short_name}
-              {(c as any).competition_type === 'domestic_cup' && (
-                <span className="ml-1 text-[8px] opacity-60">no pts</span>
-              )}
-            </FilterChip>
+              </FilterChip>
           ))}
         </div>
       )}
@@ -175,13 +172,11 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
   const isLive = fixture.status === 'live'
   const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
-  const isCup = (fixture.competition as any)?.competition_type === 'domestic_cup'
-
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block">
       <div className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/5 transition-colors">
         <Badge
-          variant={isCup ? 'warning' : (fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
+          variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
           className="text-[9px] shrink-0 min-w-[28px] text-center"
         >
           {(fixture.competition as any)?.short_name}
@@ -228,7 +223,6 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
             {new Date(fixture.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
           </span>
         )}
-        {isCup && <span className="text-[9px] text-[var(--text-muted)] shrink-0 italic">no pts</span>}
       </div>
     </Link>
   )
@@ -240,19 +234,17 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
   const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
-  const isCup = (fixture.competition as any)?.competition_type === 'domestic_cup'
 
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block">
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors">
         <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[10px] text-[var(--text-muted)]">
           <Badge
-            variant={isCup ? 'warning' : (fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
+            variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
             className="text-[9px]"
           >
             {(fixture.competition as any)?.short_name}
           </Badge>
-          {isCup && <span className="text-[9px] text-amber-400/70 italic">no pts</span>}
           {fixture.round && <span>{fixture.round}</span>}
           {fixture.matchday && <span>MD{fixture.matchday}</span>}
           {isLive && <Badge variant="danger" className="text-[9px] ml-1">● LIVE</Badge>}
