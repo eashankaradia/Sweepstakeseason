@@ -19,7 +19,7 @@ export default function FixturesPage() {
   const [league, setLeague] = useState<League | null>(null)
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fixtures, setFixtures] = useState<FixtureRow[]>([])
-  const [ownerMap, setOwnerMap] = useState<Map<string, Player>>(new Map())
+  const [ownerMap, setOwnerMap] = useState<Map<string, Player[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'results'>('upcoming')
   const [activeComp, setActiveComp] = useState('all')
@@ -59,9 +59,13 @@ export default function FixturesPage() {
     setFixtures((fix ?? []) as any[])
     setLastSyncedAt((lastSync as any)?.created_at ?? null)
 
-    const map = new Map<string, Player>()
+    const map = new Map<string, Player[]>()
     for (const a of (assignments ?? []) as any[]) {
-      if (a.players && a.team_id) map.set(a.team_id, a.players)
+      if (a.players && a.team_id) {
+        const arr = map.get(a.team_id) ?? []
+        arr.push(a.players)
+        map.set(a.team_id, arr)
+      }
     }
     setOwnerMap(map)
     setLoading(false)
@@ -169,8 +173,8 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
-  const homeOwner = ownerMap.get(fixture.home_team_id)
-  const awayOwner = ownerMap.get(fixture.away_team_id)
+  const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
+  const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
   const isCup = (fixture.competition as any)?.competition_type === 'domestic_cup'
 
   return (
@@ -185,7 +189,11 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
 
         <div className="flex items-center gap-1 flex-1 min-w-0">
           <div className="flex items-center gap-1 flex-1 justify-end min-w-0">
-            {homeOwner && <Avatar name={homeOwner.name} color={homeOwner.color} size="sm" />}
+            {homeOwners.length > 0 && (
+              <div className="flex -space-x-1.5 shrink-0">
+                {homeOwners.map(o => <Avatar key={o.id} name={o.name} color={o.color} size="sm" />)}
+              </div>
+            )}
             <span className="text-xs text-[var(--text-primary)] truncate">{fixture.home_team?.short_name || fixture.home_team?.name}</span>
             <TeamCrest team={fixture.home_team} size="xs" />
           </div>
@@ -207,7 +215,11 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
           <div className="flex items-center gap-1 flex-1 min-w-0">
             <TeamCrest team={fixture.away_team} size="xs" />
             <span className="text-xs text-[var(--text-primary)] truncate">{fixture.away_team?.short_name || fixture.away_team?.name}</span>
-            {awayOwner && <Avatar name={awayOwner.name} color={awayOwner.color} size="sm" />}
+            {awayOwners.length > 0 && (
+              <div className="flex -space-x-1.5 shrink-0">
+                {awayOwners.map(o => <Avatar key={o.id} name={o.name} color={o.color} size="sm" />)}
+              </div>
+            )}
           </div>
         </div>
 
@@ -225,8 +237,8 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
 function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
-  const homeOwner = ownerMap.get(fixture.home_team_id)
-  const awayOwner = ownerMap.get(fixture.away_team_id)
+  const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
+  const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
   const isCup = (fixture.competition as any)?.competition_type === 'domestic_cup'
 
@@ -254,10 +266,14 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
               <TeamCrest team={fixture.home_team} size="sm" />
               <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.name}</span>
             </div>
-            {homeOwner && (
-              <div className="flex items-center gap-1 mt-0.5 ml-0.5">
-                <Avatar name={homeOwner.name} color={homeOwner.color} size="sm" />
-                <span className="text-[9px] text-[var(--text-muted)]">{homeOwner.name}</span>
+            {homeOwners.length > 0 && (
+              <div className="flex flex-col gap-0.5 mt-0.5 ml-0.5">
+                {homeOwners.map(o => (
+                  <div key={o.id} className="flex items-center gap-1">
+                    <Avatar name={o.name} color={o.color} size="sm" />
+                    <span className="text-[9px] text-[var(--text-muted)]">{o.name}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -277,10 +293,14 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
               <span className="text-sm font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.name}</span>
               <TeamCrest team={fixture.away_team} size="sm" />
             </div>
-            {awayOwner && (
-              <div className="flex items-center gap-1 mt-0.5 justify-end mr-0.5">
-                <span className="text-[9px] text-[var(--text-muted)]">{awayOwner.name}</span>
-                <Avatar name={awayOwner.name} color={awayOwner.color} size="sm" />
+            {awayOwners.length > 0 && (
+              <div className="flex flex-col gap-0.5 mt-0.5 items-end mr-0.5">
+                {awayOwners.map(o => (
+                  <div key={o.id} className="flex items-center gap-1 flex-row-reverse">
+                    <Avatar name={o.name} color={o.color} size="sm" />
+                    <span className="text-[9px] text-[var(--text-muted)]">{o.name}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

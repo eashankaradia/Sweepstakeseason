@@ -22,8 +22,8 @@ type MatchEvent = {
 
 export default function MatchCentrePage({ params }: { params: { id: string } }) {
   const [fixture, setFixture] = useState<any>(null)
-  const [homeOwner, setHomeOwner] = useState<Player | null>(null)
-  const [awayOwner, setAwayOwner] = useState<Player | null>(null)
+  const [homeOwner, setHomeOwner] = useState<Player[]>([])
+  const [awayOwner, setAwayOwner] = useState<Player[]>([])
   const [homeScore, setHomeScore] = useState<any>(null)
   const [awayScore, setAwayScore] = useState<any>(null)
   const [espnData, setEspnData] = useState<any>(null)
@@ -60,9 +60,16 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', fix.league_id),
     ])
 
-    const aMap = new Map((assignments ?? []).map((a: any) => [a.team_id, a.players]))
-    setHomeOwner(aMap.get(fix.home_team_id) ?? null)
-    setAwayOwner(aMap.get(fix.away_team_id) ?? null)
+    const aMap = new Map<string, Player[]>()
+    for (const a of (assignments ?? []) as any[]) {
+      if (a.players && a.team_id) {
+        const arr = aMap.get(a.team_id) ?? []
+        arr.push(a.players)
+        aMap.set(a.team_id, arr)
+      }
+    }
+    setHomeOwner(aMap.get(fix.home_team_id) ?? [])
+    setAwayOwner(aMap.get(fix.away_team_id) ?? [])
     setPowerUps(pups ?? [])
 
     // Map player_id → player for standings projection
@@ -180,10 +187,14 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
             <span className="text-sm font-semibold text-[var(--text-primary)] text-center leading-tight">
               {fixture.home_team?.name}
             </span>
-            {homeOwner && (
-              <div className="flex items-center gap-1">
-                <Avatar name={homeOwner.name} color={homeOwner.color} size="sm" />
-                <span className="text-[10px] text-[var(--text-secondary)]">{homeOwner.name}</span>
+            {homeOwner.length > 0 && (
+              <div className="flex flex-col items-center gap-0.5">
+                {homeOwner.map(o => (
+                  <div key={o.id} className="flex items-center gap-1">
+                    <Avatar name={o.name} color={o.color} size="sm" />
+                    <span className="text-[10px] text-[var(--text-secondary)]">{o.name}</span>
+                  </div>
+                ))}
               </div>
             )}
             {homePts != null && (
@@ -217,10 +228,14 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
             <span className="text-sm font-semibold text-[var(--text-primary)] text-center leading-tight">
               {fixture.away_team?.name}
             </span>
-            {awayOwner && (
-              <div className="flex items-center gap-1">
-                <Avatar name={awayOwner.name} color={awayOwner.color} size="sm" />
-                <span className="text-[10px] text-[var(--text-secondary)]">{awayOwner.name}</span>
+            {awayOwner.length > 0 && (
+              <div className="flex flex-col items-center gap-0.5">
+                {awayOwner.map(o => (
+                  <div key={o.id} className="flex items-center gap-1">
+                    <Avatar name={o.name} color={o.color} size="sm" />
+                    <span className="text-[10px] text-[var(--text-secondary)]">{o.name}</span>
+                  </div>
+                ))}
               </div>
             )}
             {awayPts != null && (
@@ -299,8 +314,8 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
 
       {/* Team season stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <TeamStatCard team={fixture.home_team} score={homeScore} owner={homeOwner} />
-        <TeamStatCard team={fixture.away_team} score={awayScore} owner={awayOwner} />
+        <TeamStatCard team={fixture.home_team} score={homeScore} owners={homeOwner} />
+        <TeamStatCard team={fixture.away_team} score={awayScore} owners={awayOwner} />
       </div>
 
       {/* Projected leaderboard (live only — points not yet synced) */}
@@ -308,8 +323,8 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         <ProjectedLeaderboard
           allOwners={allOwners}
           allPlayerScores={allPlayerScores}
-          homeOwner={homeOwner}
-          awayOwner={awayOwner}
+          homeOwners={homeOwner}
+          awayOwners={awayOwner}
           homePts={homePts}
           awayPts={awayPts}
           homeDon={homeDon}
@@ -333,22 +348,24 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ProjectedLeaderboard({
-  allOwners, allPlayerScores, homeOwner, awayOwner, homePts, awayPts, homeDon, awayDon,
+  allOwners, allPlayerScores, homeOwners, awayOwners, homePts, awayPts, homeDon, awayDon,
 }: {
   allOwners: Map<string, Player>
   allPlayerScores: Map<string, number>
-  homeOwner: Player | null
-  awayOwner: Player | null
+  homeOwners: Player[]
+  awayOwners: Player[]
   homePts: number
   awayPts: number
   homeDon: any
   awayDon: any
 }) {
+  const homeOwnerIds = new Set(homeOwners.map(o => o.id))
+  const awayOwnerIds = new Set(awayOwners.map(o => o.id))
   const projected = [...allOwners.entries()].map(([pid, player]) => {
     let pts = allPlayerScores.get(pid) ?? 0
     let delta = 0
-    if (homeOwner && pid === homeOwner.id) delta = projectedPtsWithDon(homePts, homeDon)
-    if (awayOwner && pid === awayOwner.id) delta = projectedPtsWithDon(awayPts, awayDon)
+    if (homeOwnerIds.has(pid)) delta += projectedPtsWithDon(homePts, homeDon)
+    if (awayOwnerIds.has(pid)) delta += projectedPtsWithDon(awayPts, awayDon)
     return { player, pts: pts + delta, delta }
   }).sort((a, b) => b.pts - a.pts)
 
@@ -444,7 +461,7 @@ function MatchTimeline({
   )
 }
 
-function TeamStatCard({ team, score, owner }: { team: any; score: any; owner: Player | null }) {
+function TeamStatCard({ team, score, owners }: { team: any; score: any; owners: Player[] }) {
   if (!team) return null
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
@@ -468,10 +485,14 @@ function TeamStatCard({ team, score, owner }: { team: any; score: any; owner: Pl
       {team.league_position && (
         <div className="text-[10px] text-[var(--text-muted)] mt-1">#{team.league_position} in league</div>
       )}
-      {owner && (
-        <div className="flex items-center gap-1 mt-2 pt-2 border-t border-[var(--border)]">
-          <Avatar name={owner.name} color={owner.color} size="sm" />
-          <span className="text-[10px] text-[var(--text-secondary)] truncate">{owner.name}</span>
+      {owners.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-[var(--border)] flex flex-col gap-0.5">
+          {owners.map(o => (
+            <div key={o.id} className="flex items-center gap-1">
+              <Avatar name={o.name} color={o.color} size="sm" />
+              <span className="text-[10px] text-[var(--text-secondary)] truncate">{o.name}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
