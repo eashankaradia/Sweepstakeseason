@@ -5,7 +5,9 @@ import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
-import { Avatar } from '@/components/ui/Avatar'
+import { OwnerStack } from '@/components/ui/OwnerStack'
+import { FilterChip } from '@/components/ui/FilterChip'
+import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
@@ -15,7 +17,6 @@ export default function TeamsPage() {
   const [sortedCompetitions, setSortedCompetitions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sortMode, setSortMode] = useState<SortMode>('sweepstake')
-
   const supabase = createClient()
 
   useEffect(() => { load() }, [])
@@ -28,7 +29,6 @@ export default function TeamsPage() {
     const [
       { data: teamCompData },
       { data: assignments },
-      { data: players },
       { data: teamScores },
     ] = await Promise.all([
       supabase.from('team_competitions')
@@ -37,13 +37,19 @@ export default function TeamsPage() {
       supabase.from('player_team_assignments')
         .select('team_id, player_id, players(id, name, color)')
         .eq('league_id', leagueId),
-      supabase.from('players').select('*').eq('league_id', leagueId),
-      supabase.from('team_scores').select('team_id, total_points, wins, draws, losses, matches_played').eq('league_id', leagueId),
+      supabase.from('team_scores')
+        .select('team_id, total_points, wins, draws, losses, matches_played')
+        .eq('league_id', leagueId),
     ])
 
-    const assignMap = new Map<string, any>()
+    // Multi-owner map: team_id → players[]
+    const assignMap = new Map<string, any[]>()
     for (const a of (assignments ?? []) as any[]) {
-      if (a.team_id) assignMap.set(a.team_id, a.players)
+      if (a.team_id && a.players) {
+        const arr = assignMap.get(a.team_id) ?? []
+        arr.push(a.players)
+        assignMap.set(a.team_id, arr)
+      }
     }
 
     const scoreMap = new Map<string, any>()
@@ -63,12 +69,12 @@ export default function TeamsPage() {
       if (!comp || !comp.enabled || comp.competition_type === 'domestic_cup') continue
       if (!competitionMap.has(comp.id)) competitionMap.set(comp.id, { competition: comp, teams: [] })
       const team = row.teams
-      if (!team || !assignMap.has(team.id)) continue
+      if (!team) continue
       const existing = competitionMap.get(comp.id)!
       if (!existing.teams.find((t: any) => t.id === team.id)) {
         existing.teams.push({
           ...team,
-          assignedPlayer: assignMap.get(team.id) ?? null,
+          owners: assignMap.get(team.id) ?? [],
           score: scoreMap.get(team.id) ?? null,
         })
       }
@@ -84,9 +90,7 @@ export default function TeamsPage() {
 
   function sortTeams(teams: any[], mode: SortMode) {
     return [...teams].sort((a, b) => {
-      if (mode === 'last-season') {
-        return (a.league_position ?? 999) - (b.league_position ?? 999)
-      }
+      if (mode === 'last-season') return (a.league_position ?? 999) - (b.league_position ?? 999)
       return (b.score?.total_points ?? 0) - (a.score?.total_points ?? 0)
     })
   }
@@ -97,23 +101,14 @@ export default function TeamsPage() {
 
   return (
     <AppShell title="Teams">
-      {/* Sort mode toggle */}
       {hasTeams && (
         <div className="flex items-center gap-1.5 mb-4">
-          <span className="text-[10px] text-[var(--text-muted)] mr-1">Sort by</span>
-          {(['sweepstake', 'last-season'] as SortMode[]).map(mode => (
-            <button
-              key={mode}
-              onClick={() => setSortMode(mode)}
-              className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${
-                sortMode === mode
-                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                  : 'border-[var(--border)] text-[var(--text-secondary)]'
-              }`}
-            >
-              {mode === 'sweepstake' ? '⚽ Sweepstake pts' : '📅 Last season'}
-            </button>
-          ))}
+          <FilterChip active={sortMode === 'sweepstake'} onClick={() => setSortMode('sweepstake')}>
+            Sweepstake pts
+          </FilterChip>
+          <FilterChip active={sortMode === 'last-season'} onClick={() => setSortMode('last-season')}>
+            Last season
+          </FilterChip>
         </div>
       )}
 
@@ -122,35 +117,24 @@ export default function TeamsPage() {
       ) : (
         <div className="space-y-5">
           {sortedCompetitions.map(({ competition, teams }) => {
-            const isEuropean = competition.competition_type === 'european'
-            const isCup = competition.competition_type === 'domestic_cup'
+            const isEu = competition.competition_type === 'european'
             const sorted = sortTeams(teams, sortMode)
             return (
               <div key={competition.id}>
-                <div
-                  className="rounded-t-xl border border-b-0 px-3 py-2.5 flex items-center gap-2"
-                  style={{
-                    background: isEuropean ? 'rgba(168,85,247,0.08)' : isCup ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.08)',
-                    borderColor: isEuropean ? 'rgba(168,85,247,0.25)' : isCup ? 'rgba(245,158,11,0.25)' : 'rgba(99,102,241,0.25)',
-                  }}
-                >
-                  <Badge variant={isEuropean ? 'purple' : isCup ? 'warning' : 'default'} className="font-bold">
-                    {competition.short_name}
-                  </Badge>
+                <div className={`rounded-t-xl border border-b-0 px-3 py-2.5 flex items-center gap-2 ${isEu ? 'bg-purple-500/8 border-purple-500/25' : 'bg-[var(--accent)]/8 border-[var(--accent)]/25'}`}>
+                  <CompetitionBadge
+                    name={competition.name}
+                    shortName={competition.short_name}
+                    type={competition.competition_type}
+                  />
                   <span className="text-xs font-medium text-[var(--text-secondary)] flex-1 truncate">{competition.name}</span>
-                  {isCup && <span className="text-[9px] text-amber-400/70 italic">no sweepstake pts</span>}
-                  <span className="text-[10px] text-[var(--text-muted)]">{teams.length} teams</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">{teams.length} clubs</span>
                 </div>
 
-                <div
-                  className="rounded-b-xl border overflow-hidden divide-y divide-[var(--border)]"
-                  style={{
-                    borderColor: isEuropean ? 'rgba(168,85,247,0.25)' : isCup ? 'rgba(245,158,11,0.25)' : 'rgba(99,102,241,0.25)',
-                  }}
-                >
+                <div className={`rounded-b-xl border overflow-hidden divide-y divide-[var(--border)] ${isEu ? 'border-purple-500/25' : 'border-[var(--accent)]/25'}`}>
                   {sorted.map((team: any, idx: number) => (
                     <Link key={team.id} href={`/teams/${team.id}`}>
-                      <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--border)]/30 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] transition-colors min-h-[52px]">
                         {sortMode === 'last-season' && (
                           <span className="text-[10px] text-[var(--text-muted)] w-5 text-center shrink-0">
                             {team.league_position ?? idx + 1}
@@ -159,7 +143,7 @@ export default function TeamsPage() {
                         <TeamCrest team={team} size="sm" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span className="text-[10px] text-[var(--text-secondary)]">{team.country}</span>
                             <TierBadge tier={team.tier} />
                             {team.score && team.score.matches_played > 0 && (
@@ -171,17 +155,17 @@ export default function TeamsPage() {
                             )}
                           </div>
                         </div>
-                        {team.assignedPlayer ? (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Avatar name={team.assignedPlayer.name} color={team.assignedPlayer.color} size="sm" />
-                            <div className="text-right">
-                              <div className="text-xs font-semibold text-[var(--text-primary)]">{team.score?.total_points ?? 0}</div>
-                              <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
-                            </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {team.owners.length > 0 ? (
+                            <OwnerStack owners={team.owners} size="xs" max={3} />
+                          ) : (
+                            <span className="text-[10px] text-[var(--text-muted)]">—</span>
+                          )}
+                          <div className="text-right min-w-[28px]">
+                            <div className="text-xs font-semibold text-[var(--text-primary)]">{team.score?.total_points ?? 0}</div>
+                            <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-[var(--text-muted)] shrink-0">Unassigned</span>
-                        )}
+                        </div>
                       </div>
                     </Link>
                   ))}
@@ -196,11 +180,12 @@ export default function TeamsPage() {
 }
 
 function TierBadge({ tier }: { tier: number }) {
-  const labels = ['', 'Elite', 'Top', 'Mid', 'Lower']
-  const variants = ['', 'warning', 'info', 'success', 'muted'] as const
+  const labels: Record<number, string> = { 1: 'Elite', 2: 'Top', 3: 'Mid', 4: 'Lower' }
+  const variants: Record<number, 'warning' | 'info' | 'success' | 'muted'> = { 1: 'warning', 2: 'info', 3: 'success', 4: 'muted' }
+  if (!tier || !labels[tier]) return null
   return (
-    <Badge variant={variants[tier] || 'muted'} className="text-[9px] px-1 py-0">
-      {labels[tier] || 'T' + tier}
+    <Badge variant={variants[tier] ?? 'muted'} className="text-[9px] px-1 py-0">
+      {labels[tier]}
     </Badge>
   )
 }

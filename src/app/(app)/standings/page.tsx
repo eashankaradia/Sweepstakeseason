@@ -8,6 +8,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import Link from 'next/link'
 
 type FormResult = 'W' | 'D' | 'L'
 
@@ -352,10 +353,14 @@ export default function StandingsPage() {
                         </div>
 
                         {/* Player */}
-                        <div className="flex items-center gap-2 min-w-0">
+                        <Link
+                          href={`/players/${entry.player.id}`}
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-2 min-w-0"
+                        >
                           <Avatar name={entry.player.name} color={entry.player.color} size="sm" />
                           <div className="min-w-0">
-                            <span className="font-semibold text-sm text-[var(--text-primary)] truncate block leading-tight">
+                            <span className="font-semibold text-sm text-[var(--text-primary)] truncate block leading-tight hover:text-[var(--accent)] transition-colors">
                               {entry.player.name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -370,7 +375,7 @@ export default function StandingsPage() {
                               {!hasDraft && <span className="text-[9px] text-[var(--text-muted)]">Draft pending</span>}
                             </div>
                           </div>
-                        </div>
+                        </Link>
 
                         {/* Form guide */}
                         <div className="flex justify-center">
