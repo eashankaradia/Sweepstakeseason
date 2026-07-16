@@ -6,6 +6,9 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
+import { OwnerStack } from '@/components/ui/OwnerStack'
+import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
+import { SectionHeader } from '@/components/ui/SectionHeader'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
@@ -15,9 +18,8 @@ export default function DashboardPage() {
   const [standings, setStandings] = useState<any[]>([])
   const [liveFixtures, setLiveFixtures] = useState<any[]>([])
   const [todayFixtures, setTodayFixtures] = useState<any[]>([])
-  const [recentResults, setRecentResults] = useState<any[]>([])
   const [activityFeed, setActivityFeed] = useState<any[]>([])
-  const [ownerMap, setOwnerMap] = useState<Map<string, any>>(new Map())
+  const [ownerMap, setOwnerMap] = useState<Map<string, any[]>>(new Map())
   const [weeklyPtsMap, setWeeklyPtsMap] = useState<Map<string, number>>(new Map())
   const [formMap, setFormMap] = useState<Map<string, string[]>>(new Map())
   const [posChangeMap, setPosChangeMap] = useState<Map<string, number>>(new Map())
@@ -63,7 +65,6 @@ export default function DashboardPage() {
       { data: assignments },
       { data: live },
       { data: todayFix },
-      { data: recent },
       { data: fullActivity },
       { data: weekFix },
     ] = await Promise.all([
@@ -79,10 +80,6 @@ export default function DashboardPage() {
         .gte('kickoff_time', `${todayStr}T00:00:00`)
         .lte('kickoff_time', `${todayStr}T23:59:59`)
         .order('kickoff_time'),
-      supabase.from('fixtures')
-        .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
-        .eq('league_id', lg.id).eq('status', 'completed')
-        .order('kickoff_time', { ascending: false }).limit(6),
       supabase.from('activity_feed')
         .select('*')
         .eq('league_id', lg.id)
@@ -98,14 +95,18 @@ export default function DashboardPage() {
         .limit(30),
     ])
 
-    // Owner map: team_id → player
-    const oMap = new Map<string, any>()
+    // Owner map: team_id → player[]
+    const oMap = new Map<string, any[]>()
     for (const a of (assignments ?? []) as any[]) {
-      if (a.players && a.team_id) oMap.set(a.team_id, a.players)
+      if (a.players && a.team_id) {
+        const arr = oMap.get(a.team_id) ?? []
+        arr.push(a.players)
+        oMap.set(a.team_id, arr)
+      }
     }
     setOwnerMap(oMap)
 
-    // Weekly points per player from last 7 days activity
+    // Weekly pts + form
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
     const wkPts = new Map<string, number>()
     const fMap = new Map<string, string[]>()
@@ -113,13 +114,9 @@ export default function DashboardPage() {
     for (const evt of (fullActivity ?? []) as any[]) {
       if (!evt.player_id) continue
       const evtTime = new Date(evt.created_at).getTime()
-
-      // Weekly points
       if (evtTime > weekAgo && evt.points_delta) {
         wkPts.set(evt.player_id, (wkPts.get(evt.player_id) ?? 0) + evt.points_delta)
       }
-
-      // Form guide: last 5 full_time events per player
       if (evt.event_type === 'full_time') {
         const arr = fMap.get(evt.player_id) ?? []
         if (arr.length < 5) {
@@ -132,7 +129,6 @@ export default function DashboardPage() {
     setWeeklyPtsMap(wkPts)
     setFormMap(fMap)
 
-    // Build standings
     const rows = (players ?? []).map((p: any) => {
       const score = (playerScores ?? []).find((s: any) => s.player_id === p.id)
       const myTeams = (assignments ?? []).filter((a: any) => a.player_id === p.id)
@@ -148,7 +144,6 @@ export default function DashboardPage() {
       }
     }).sort((a: any, b: any) => b.totalPoints - a.totalPoints)
 
-    // Position changes: compare current vs. standings without this week's points
     const prevRows = [...rows].map((r: any) => ({
       id: r.player.id,
       prevPts: r.totalPoints - (wkPts.get(r.player.id) ?? 0),
@@ -157,13 +152,11 @@ export default function DashboardPage() {
     const pcMap = new Map<string, number>()
     rows.forEach((r: any, i: number) => {
       const prevIdx = prevRows.findIndex((p) => p.id === r.player.id)
-      pcMap.set(r.player.id, prevIdx - i) // positive = moved up this week
+      pcMap.set(r.player.id, prevIdx - i)
     })
     setPosChangeMap(pcMap)
-
     setStandings(rows)
 
-    // My clubs playing today + next match
     if (uid) {
       const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
       if (myPlayer) {
@@ -179,13 +172,11 @@ export default function DashboardPage() {
         ])
         setMyClubsToday([...todayIds].filter(id => myTeamIds.has(id)).length)
 
-        // Next upcoming match for my clubs
         const allUpcoming = [...(todayFix ?? []), ...(weekFix ?? [])]
           .filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
           .sort((a: any, b: any) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime())
         setNextMyMatch(allUpcoming[0] ?? null)
 
-        // Fetch pending power-ups for my clubs playing today/live
         const todayFixIds = [...(live ?? []), ...(todayFix ?? [])].map((f: any) => f.id)
         if (todayFixIds.length > 0) {
           const { data: pups } = await supabase
@@ -205,8 +196,7 @@ export default function DashboardPage() {
     setLiveFixtures((live ?? []) as any[])
     setTodayFixtures((todayFix ?? []) as any[])
     setWeekFixtures((weekFix ?? []) as any[])
-    setRecentResults((recent ?? []) as any[])
-    setActivityFeed(((fullActivity ?? []) as any[]).slice(0, 5))
+    setActivityFeed(((fullActivity ?? []) as any[]).slice(0, 6))
     setLoading(false)
     setRefreshing(false)
   }, [])
@@ -219,7 +209,6 @@ export default function DashboardPage() {
     return () => clearInterval(id)
   }, [liveFixtures.length, load])
 
-  // Pull-to-refresh touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY
   }
@@ -256,17 +245,17 @@ export default function DashboardPage() {
   const myPos = myEntry ? standings.indexOf(myEntry) + 1 : null
   const hasDraft = standings.some((s: any) => s.teamCount > 0)
 
-  // Compute my team IDs for Today's Stakes
   const myTeamIdsForStakes = myEntry
-    ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
+    ? new Set([...ownerMap.entries()].filter(([, arr]) => arr.some((p: any) => p.id === myEntry.player.id)).map(([id]) => id))
     : new Set<string>()
+
   const stakesFixtures = myTeamIdsForStakes.size > 0
     ? [...liveFixtures, ...todayFixtures].filter(
         (f: any) => myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id)
       )
     : []
 
-  const weekFixtureCount = weekFixtures.length + todayFixtures.length + liveFixtures.length
+  const allTodayFixtures = [...liveFixtures, ...todayFixtures]
 
   return (
     <AppShell
@@ -274,7 +263,7 @@ export default function DashboardPage() {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Pull-to-refresh indicator */}
+      {/* Pull-to-refresh */}
       {pullDist > 20 && (
         <div
           className="flex items-center justify-center overflow-hidden transition-all"
@@ -285,111 +274,24 @@ export default function DashboardPage() {
       )}
       {refreshing && (
         <div className="flex items-center justify-center py-1">
-          <span className="text-[10px] text-[var(--accent)]">Refreshing...</span>
+          <span className="text-[10px] text-[var(--accent)]">Refreshing…</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 className="font-black text-xl text-[var(--text-primary)] leading-tight">{league.name}</h1>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <p className="text-xs text-[var(--text-secondary)]">{league.season}</p>
-            {weekFixtureCount > 0 && (
-              <span className="text-[10px] text-[var(--text-muted)]">· {weekFixtureCount} game{weekFixtureCount !== 1 ? 's' : ''} this week</span>
-            )}
-          </div>
+      {/* League header */}
+      <div className="flex items-start justify-between gap-2 mb-5">
+        <div className="flex-1 min-w-0">
+          <h1 className="font-black text-xl text-[var(--text-primary)] leading-tight truncate">{league.name}</h1>
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{league.season}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Badge variant={league.status === 'active' ? 'success' : 'warning'}>
-            {league.status === 'active' ? 'Live' : 'Setup'}
-          </Badge>
-        </div>
+        <Badge variant={league.status === 'active' ? 'live' : 'warning'} className="shrink-0">
+          {league.status === 'active' ? 'Live' : 'Setup'}
+        </Badge>
       </div>
 
-      {/* LIVE matches */}
-      {liveFixtures.length > 0 && (
-        <section className="mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Live Now</h2>
-            <Badge variant="danger" className="text-[9px]">{liveFixtures.length}</Badge>
-          </div>
-          <div className="space-y-2">
-            {liveFixtures.map(f => (
-              <LiveFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Today's Stakes */}
-      {stakesFixtures.length > 0 && myEntry && (
-        <section className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Today's Stakes</h2>
-            <Link href="/fixtures" className="text-xs text-[var(--accent)]">All →</Link>
-          </div>
-          <div className="space-y-2">
-            {stakesFixtures.map((f: any) => {
-              const isMyHome = myTeamIdsForStakes.has(f.home_team_id)
-              const myTeam = isMyHome ? f.home_team : f.away_team
-              const opp = isMyHome ? f.away_team : f.home_team
-              const donActive = myPowerUps.some((p: any) => p.fixture_id === f.id && p.power_up_type === 'double_or_nothing')
-              const isLive = f.status === 'live'
-              return (
-                <Link key={f.id} href={`/fixtures/${f.id}`}>
-                  <div className={`rounded-xl border p-3 transition-colors ${
-                    isLive
-                      ? 'border-red-500/40 bg-red-500/5'
-                      : 'border-[var(--accent)]/30 bg-[var(--accent)]/5 hover:bg-[var(--accent)]/8'
-                  }`}>
-                    <div className="flex items-center gap-2.5">
-                      <TeamCrest team={myTeam} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-semibold text-[var(--text-primary)]">
-                            {myTeam?.short_name || myTeam?.name}
-                          </span>
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            {isMyHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
-                          </span>
-                          {isLive && (
-                            <span className="text-[9px] font-bold text-red-400 animate-pulse">● LIVE</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          {donActive && (
-                            <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full">
-                              ⚡ D-o-N active
-                            </span>
-                          )}
-                          {f.kickoff_time && !isLive && (
-                            <span className="text-[9px] text-[var(--text-muted)]">
-                              {new Date(f.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                              {' · '}{formatCountdown(f.kickoff_time)}
-                            </span>
-                          )}
-                          {isLive && (
-                            <span className="text-sm font-black text-[var(--text-primary)]">
-                              {f.home_score}–{f.away_score}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <TeamCrest team={opp} size="xs" />
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* My standing hero card */}
+      {/* My hero card */}
       {myEntry && myPos && hasDraft && (
-        <MyStandingCard
+        <HeroCard
           entry={myEntry}
           pos={myPos}
           posDelta={posChangeMap.get(myEntry.player.id) ?? 0}
@@ -401,9 +303,9 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Draft pending */}
+      {/* Draft not yet run */}
       {!hasDraft && (
-        <div className="rounded-2xl border border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 text-center py-5 px-4 mb-4">
+        <div className="rounded-2xl border border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 text-center py-6 px-4 mb-5">
           <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Draft not yet run</p>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
             {league.draft_locked ? 'Draft is locked — contact your admin.' : 'Head to the draft room to assign teams.'}
@@ -416,13 +318,54 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Full leaderboard */}
-      {standings.length > 0 && hasDraft && (
-        <section className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Leaderboard</h2>
-            <Link href="/standings" className="text-xs text-[var(--accent)]">Details →</Link>
+      {/* LIVE matches */}
+      {liveFixtures.length > 0 && (
+        <section className="mb-5">
+          <SectionHeader
+            title="Live now"
+            action={
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] animate-pulse" />
+                <Link href="/fixtures" className="text-xs text-[var(--accent)]">All →</Link>
+              </div>
+            }
+          />
+          <div className="space-y-2">
+            {liveFixtures.map(f => (
+              <LiveFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+            ))}
           </div>
+        </section>
+      )}
+
+      {/* Today's fixtures — horizontal scroll */}
+      {allTodayFixtures.length > 0 && (
+        <section className="mb-5">
+          <SectionHeader
+            title={`Today · ${allTodayFixtures.length} game${allTodayFixtures.length !== 1 ? 's' : ''}`}
+            action={<Link href="/fixtures">All →</Link>}
+          />
+          <div className="scroll-x -mx-4 px-4">
+            {allTodayFixtures.map(f => (
+              <TodayFixtureCard
+                key={f.id}
+                fixture={f}
+                ownerMap={ownerMap}
+                isMine={myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id)}
+                myPowerUps={myPowerUps}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Leaderboard */}
+      {standings.length > 0 && hasDraft && (
+        <section className="mb-5">
+          <SectionHeader
+            title="Leaderboard"
+            action={<Link href="/standings">Full table →</Link>}
+          />
           <div className="rounded-xl border border-[var(--border)] overflow-hidden">
             {standings.map((entry: any, i: number) => (
               <LeaderboardRow
@@ -439,63 +382,38 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Today's fixtures — my clubs only */}
+      {/* My clubs this week */}
       {(() => {
-        const myTeamIds = myEntry
-          ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
-          : new Set<string>()
-        const myToday = myTeamIds.size > 0
-          ? todayFixtures.filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
-          : []
-        if (myToday.length === 0) return null
-        return (
-          <section className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-bold text-sm text-[var(--text-primary)]">
-                My Clubs Today
-                <span className="ml-1.5 font-normal text-xs text-[var(--text-muted)]">· {myToday.length} game{myToday.length !== 1 ? 's' : ''}</span>
-              </h2>
-              <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
-            </div>
-            <div className="space-y-2">
-              {myToday.map((f: any) => (
-                <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
-              ))}
-            </div>
-          </section>
-        )
-      })()}
-
-      {/* This week's upcoming fixtures — my clubs only */}
-      {(() => {
-        const myTeamIds = myEntry
-          ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
-          : new Set<string>()
-        const myWeek = myTeamIds.size > 0
-          ? weekFixtures.filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
+        const myWeek = myTeamIdsForStakes.size > 0
+          ? weekFixtures.filter((f: any) => myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id))
           : []
         if (myWeek.length === 0) return null
-        const myWeekByDay = new Map<string, any[]>()
+        const byDay = new Map<string, any[]>()
         for (const f of myWeek) {
           const day = (f.kickoff_time as string).substring(0, 10)
-          if (!myWeekByDay.has(day)) myWeekByDay.set(day, [])
-          myWeekByDay.get(day)!.push(f)
+          if (!byDay.has(day)) byDay.set(day, [])
+          byDay.get(day)!.push(f)
         }
         return (
-          <section className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-bold text-sm text-[var(--text-primary)]">My Clubs This Week</h2>
-              <Link href="/fixtures" className="text-xs text-[var(--accent)]">All fixtures →</Link>
-            </div>
+          <section className="mb-5">
+            <SectionHeader
+              title="My clubs this week"
+              action={<Link href="/fixtures">All →</Link>}
+            />
             <div className="space-y-3">
-              {[...myWeekByDay.entries()].map(([day, dayFixtures]) => (
+              {[...byDay.entries()].map(([day, dayFixtures]) => (
                 <div key={day}>
                   <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5">
                     {new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </p>
-                  <div className="space-y-1.5">
-                    {dayFixtures.map((f: any) => (
-                      <MiniFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+                    {dayFixtures.map((f: any, i: number) => (
+                      <MiniFixtureRow
+                        key={f.id}
+                        fixture={f}
+                        ownerMap={ownerMap}
+                        divider={i < dayFixtures.length - 1}
+                      />
                     ))}
                   </div>
                 </div>
@@ -508,23 +426,23 @@ export default function DashboardPage() {
       {/* Activity feed */}
       {activityFeed.length > 0 && (
         <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-sm text-[var(--text-primary)]">Activity</h2>
-            <Link href="/activity" className="text-xs text-[var(--accent)]">See all →</Link>
-          </div>
+          <SectionHeader
+            title="Activity"
+            action={<Link href="/activity">See all →</Link>}
+          />
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
             {activityFeed.map((event: any, i: number) => (
               <div
                 key={event.id}
                 className={['px-3 py-2.5 flex items-start gap-2.5', i < activityFeed.length - 1 ? 'border-b border-[var(--border)]' : ''].join(' ')}
               >
-                <span className="text-sm shrink-0 mt-0.5">{getEventIcon(event.event_type)}</span>
+                <span className="text-sm shrink-0 mt-0.5">{EVENT_ICONS[event.event_type] ?? '📢'}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-[var(--text-primary)] font-medium leading-snug">{event.title}</p>
                   <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{formatRelativeTime(event.created_at)}</p>
                 </div>
                 {event.points_delta != null && event.points_delta !== 0 && (
-                  <span className={`text-xs font-bold shrink-0 ${event.points_delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <span className={`text-xs font-bold shrink-0 ${event.points_delta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
                     {event.points_delta > 0 ? '+' : ''}{event.points_delta}
                   </span>
                 )}
@@ -537,72 +455,75 @@ export default function DashboardPage() {
   )
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Hero card ────────────────────────────────────────────────────────────────
 
-function MyStandingCard({
-  entry, pos, posDelta, form, weeklyPts, clubsToday, liveCount, nextMatch,
-}: {
+function HeroCard({ entry, pos, posDelta, form, weeklyPts, clubsToday, liveCount, nextMatch }: {
   entry: any; pos: number; posDelta: number; form: string[]
   weeklyPts: number; clubsToday: number; liveCount: number; nextMatch: any
 }) {
   return (
     <div
-      className="rounded-2xl p-4 mb-3 border"
+      className="rounded-2xl p-4 mb-5 border overflow-hidden relative"
       style={{
-        background: `linear-gradient(135deg, ${entry.player.color}18 0%, transparent 60%)`,
-        borderColor: `${entry.player.color}30`,
+        background: `linear-gradient(135deg, ${entry.player.color}20 0%, var(--bg-card) 55%)`,
+        borderColor: `${entry.player.color}35`,
       }}
     >
-      <div className="flex items-center gap-3">
+      {/* Background position number (watermark) */}
+      <div
+        className="absolute right-3 top-1/2 -translate-y-1/2 font-black text-[80px] leading-none select-none pointer-events-none"
+        style={{ color: entry.player.color, opacity: 0.06 }}
+      >
+        {pos}
+      </div>
+
+      <div className="flex items-center gap-3 relative">
         {/* Avatar + position badge */}
         <div className="relative shrink-0">
           <Avatar name={entry.player.name} color={entry.player.color} size="lg" />
           <div
-            className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[var(--bg)]"
+            className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-[var(--bg)]"
             style={{ backgroundColor: entry.player.color, color: '#fff' }}
           >
             {pos}
           </div>
         </div>
 
-        {/* Info */}
+        {/* Name / form / status */}
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wide">Your standing</p>
-          <p className="font-bold text-base text-[var(--text-primary)]">{entry.player.name}</p>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {/* Form dots */}
-            {form.length > 0 && (
-              <div className="flex items-center gap-0.5">
-                {form.map((r, i) => (
-                  <span
-                    key={i}
-                    className={`w-3.5 h-3.5 rounded-full text-[7px] font-bold flex items-center justify-center ${
-                      r === 'W' ? 'bg-emerald-500 text-white' : r === 'D' ? 'bg-amber-500 text-white' : 'bg-red-500/70 text-white'
-                    }`}
-                  >{r}</span>
-                ))}
-              </div>
-            )}
-            {/* Position arrow */}
-            {posDelta !== 0 && (
-              <span className={`text-[11px] font-bold ${posDelta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {posDelta > 0 ? `↑${posDelta}` : `↓${Math.abs(posDelta)}`}
-              </span>
-            )}
-            {posDelta === 0 && form.length > 0 && (
-              <span className="text-[11px] text-[var(--text-muted)]">→</span>
-            )}
-          </div>
-          {/* Clubs playing today */}
+          <p className="label-caps mb-0.5">Your standing</p>
+          <p className="font-bold text-base text-[var(--text-primary)] leading-tight truncate">{entry.player.name}</p>
+
+          {/* Form guide — 5 squares */}
+          {form.length > 0 && (
+            <div className="flex items-center gap-0.5 mt-1.5">
+              {form.map((r, i) => (
+                <span
+                  key={i}
+                  className={`w-3.5 h-3.5 rounded-sm text-[7px] font-bold flex items-center justify-center ${
+                    r === 'W' ? 'bg-[var(--green)] text-white' :
+                    r === 'D' ? 'bg-[var(--amber)] text-white' :
+                    'bg-[var(--red)]/70 text-white'
+                  }`}
+                >{r}</span>
+              ))}
+              {posDelta !== 0 && (
+                <span className={`ml-1.5 text-[11px] font-bold ${posDelta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+                  {posDelta > 0 ? `↑${posDelta}` : `↓${Math.abs(posDelta)}`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Status line */}
           {clubsToday > 0 && (
-            <p className="text-[10px] font-medium mt-1" style={{ color: liveCount > 0 ? '#f87171' : '#fbbf24' }}>
-              {liveCount > 0 ? '🔴' : '⚽'} {clubsToday} of your club{clubsToday !== 1 ? 's' : ''} {liveCount > 0 ? 'playing live' : 'playing today'}
+            <p className="text-[10px] font-medium mt-1.5" style={{ color: liveCount > 0 ? 'var(--red)' : 'var(--amber)' }}>
+              {liveCount > 0 ? '● LIVE' : '⚽'} {clubsToday} club{clubsToday !== 1 ? 's' : ''} {liveCount > 0 ? 'live' : 'today'}
             </p>
           )}
-          {/* Next match countdown */}
-          {clubsToday === 0 && nextMatch && nextMatch.kickoff_time && (
-            <p className="text-[10px] text-[var(--text-muted)] mt-1">
-              ⏱ {nextMatch.home_team?.short_name || nextMatch.home_team?.name} vs {nextMatch.away_team?.short_name || nextMatch.away_team?.name}{' '}
+          {clubsToday === 0 && nextMatch?.kickoff_time && (
+            <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
+              Next: {nextMatch.home_team?.short_name} vs {nextMatch.away_team?.short_name}{' '}
               <span className="text-[var(--accent)] font-medium">{formatCountdown(nextMatch.kickoff_time)}</span>
             </p>
           )}
@@ -610,10 +531,10 @@ function MyStandingCard({
 
         {/* Points */}
         <div className="text-right shrink-0">
-          <p className="font-black text-2xl text-[var(--text-primary)]">{entry.totalPoints}</p>
-          <p className="text-[10px] text-[var(--text-muted)]">points</p>
+          <p className="font-black text-2xl text-[var(--text-primary)] leading-none">{entry.totalPoints}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">pts total</p>
           {weeklyPts !== 0 && (
-            <p className={`text-[10px] font-semibold mt-0.5 ${weeklyPts > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <p className={`text-[11px] font-bold mt-1 ${weeklyPts > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
               {weeklyPts > 0 ? '+' : ''}{weeklyPts} this wk
             </p>
           )}
@@ -623,99 +544,166 @@ function MyStandingCard({
   )
 }
 
-function LeaderboardRow({
-  entry, position, isMe, posDelta, form, weeklyPts,
-}: {
+// ─── Today fixture card (horizontal scroll) ───────────────────────────────────
+
+function TodayFixtureCard({ fixture, ownerMap, isMine, myPowerUps }: {
+  fixture: any; ownerMap: Map<string, any[]>; isMine: boolean; myPowerUps: any[]
+}) {
+  const isLive = fixture.status === 'live'
+  const homeOwners: any[] = ownerMap.get(fixture.home_team_id) ?? []
+  const awayOwners: any[] = ownerMap.get(fixture.away_team_id) ?? []
+  const donActive = myPowerUps.some((p: any) => p.fixture_id === fixture.id && p.power_up_type === 'double_or_nothing')
+  const comp = fixture.competition as any
+
+  return (
+    <Link href={`/fixtures/${fixture.id}`} className="pressable">
+      <div
+        className={[
+          'w-[160px] rounded-xl border p-3 flex flex-col gap-2',
+          isMine
+            ? isLive
+              ? 'border-[var(--red)]/40 bg-[var(--red)]/5'
+              : 'border-[var(--accent)]/35 bg-[var(--accent)]/5'
+            : 'border-[var(--border)] bg-[var(--bg-card)]',
+        ].join(' ')}
+      >
+        {/* Competition + time */}
+        <div className="flex items-center justify-between gap-1">
+          <CompetitionBadge shortName={comp?.short_name} name={comp?.name} type={comp?.competition_type} />
+          {isLive ? (
+            <span className="text-[9px] font-bold text-[var(--red)] animate-pulse">LIVE</span>
+          ) : (
+            <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
+              {fixture.kickoff_time
+                ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                : '—'}
+            </span>
+          )}
+        </div>
+
+        {/* Home */}
+        <div className="flex items-center gap-1.5">
+          <TeamCrest team={fixture.home_team} size="xs" />
+          <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate flex-1">
+            {fixture.home_team?.short_name || fixture.home_team?.name}
+          </span>
+          {isLive && (
+            <span className="text-sm font-black text-[var(--text-primary)] tabular-nums ml-auto">{fixture.home_score ?? 0}</span>
+          )}
+        </div>
+
+        {/* Away */}
+        <div className="flex items-center gap-1.5">
+          <TeamCrest team={fixture.away_team} size="xs" />
+          <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate flex-1">
+            {fixture.away_team?.short_name || fixture.away_team?.name}
+          </span>
+          {isLive && (
+            <span className="text-sm font-black text-[var(--text-primary)] tabular-nums ml-auto">{fixture.away_score ?? 0}</span>
+          )}
+        </div>
+
+        {/* Owners row */}
+        {(homeOwners.length > 0 || awayOwners.length > 0) && (
+          <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]">
+            <OwnerStack owners={homeOwners} size="xs" max={2} />
+            <OwnerStack owners={awayOwners} size="xs" max={2} />
+          </div>
+        )}
+
+        {donActive && (
+          <div className="text-[9px] font-bold text-[var(--accent)] text-center">⚡ D-o-N active</div>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+// ─── Leaderboard row ──────────────────────────────────────────────────────────
+
+function LeaderboardRow({ entry, position, isMe, posDelta, form, weeklyPts }: {
   entry: any; position: number; isMe: boolean
   posDelta: number; form: string[]; weeklyPts: number
 }) {
-  const posColor = position === 1 ? 'text-amber-400' : position === 2 ? 'text-slate-400' : position === 3 ? 'text-orange-500' : 'text-[var(--text-muted)]'
-  const posBg = position === 1 ? 'bg-amber-500/10' : position === 2 ? 'bg-slate-400/10' : position === 3 ? 'bg-orange-500/10' : ''
+  const posColor = position === 1 ? 'text-[var(--amber)]' : position <= 3 ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'
   return (
     <div className={[
-      'flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border)] last:border-0',
+      'flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)] last:border-0',
       isMe ? 'bg-[var(--accent)]/5' : 'bg-[var(--bg-card)]',
     ].join(' ')}>
-      {/* Position */}
-      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${posBg} ${posColor}`}>
-        {position}
-      </div>
-
+      <span className={`w-5 text-[11px] font-bold tabular-nums shrink-0 ${posColor}`}>{position}</span>
       <Avatar name={entry.player.name} color={entry.player.color} size="sm" />
 
-      {/* Name + form */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-sm font-medium text-[var(--text-primary)] truncate">
-            {entry.player.name}
-          </span>
-          {isMe && <span className="text-[9px] text-[var(--accent)] font-semibold uppercase shrink-0">You</span>}
-          {posDelta > 0 && (
-            <span className="text-[10px] font-bold text-emerald-400 shrink-0">↑{posDelta}</span>
-          )}
-          {posDelta < 0 && (
-            <span className="text-[10px] font-bold text-red-400 shrink-0">↓{Math.abs(posDelta)}</span>
-          )}
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-medium text-[var(--text-primary)] truncate">{entry.player.name}</span>
+          {isMe && <span className="text-[9px] text-[var(--accent)] font-bold uppercase shrink-0">You</span>}
         </div>
-        {/* Form dots */}
+        {/* Form squares */}
         {form.length > 0 && (
-          <div className="flex items-center gap-0.5 mt-0.5">
+          <div className="flex items-center gap-[3px] mt-1">
             {form.map((r, i) => (
               <span
                 key={i}
-                className={`w-2 h-2 rounded-full ${r === 'W' ? 'bg-emerald-500' : r === 'D' ? 'bg-amber-500' : 'bg-red-500/50'}`}
+                className={`w-[14px] h-[14px] rounded-[3px] ${
+                  r === 'W' ? 'bg-[var(--green)]' :
+                  r === 'D' ? 'bg-[var(--amber)]' :
+                  'bg-[var(--red)]/60'
+                }`}
+                title={r === 'W' ? 'Win' : r === 'D' ? 'Draw' : 'Loss'}
               />
             ))}
+            {posDelta !== 0 && (
+              <span className={`ml-1 text-[10px] font-bold ${posDelta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
+                {posDelta > 0 ? `↑${posDelta}` : `↓${Math.abs(posDelta)}`}
+              </span>
+            )}
           </div>
         )}
       </div>
 
-      {/* Points + weekly */}
       <div className="text-right shrink-0">
-        <div className="flex items-center gap-1 justify-end">
-          {weeklyPts > 0 && (
-            <span className="text-[10px] text-emerald-400 font-semibold">+{weeklyPts}</span>
-          )}
-          {weeklyPts < 0 && (
-            <span className="text-[10px] text-red-400 font-semibold">{weeklyPts}</span>
-          )}
-          <span className="text-sm font-bold text-[var(--text-primary)]">{entry.totalPoints}</span>
+        <div className="flex items-center gap-1.5 justify-end">
+          {weeklyPts > 0 && <span className="text-[10px] text-[var(--green)] font-semibold">+{weeklyPts}</span>}
+          {weeklyPts < 0 && <span className="text-[10px] text-[var(--red)] font-semibold">{weeklyPts}</span>}
+          <span className="text-sm font-bold text-[var(--text-primary)] tabular-nums">{entry.totalPoints}</span>
         </div>
-        <span className="text-[10px] text-[var(--text-muted)]">pts</span>
+        <span className="text-[9px] text-[var(--text-muted)]">pts</span>
       </div>
     </div>
   )
 }
 
-function LiveFixtureCard({ fixture, ownerMap }: { fixture: any; ownerMap: Map<string, any> }) {
-  const homeOwner = ownerMap.get(fixture.home_team_id)
-  const awayOwner = ownerMap.get(fixture.away_team_id)
+// ─── Live fixture card ────────────────────────────────────────────────────────
+
+function LiveFixtureCard({ fixture, ownerMap }: { fixture: any; ownerMap: Map<string, any[]> }) {
+  const homeOwners: any[] = ownerMap.get(fixture.home_team_id) ?? []
+  const awayOwners: any[] = ownerMap.get(fixture.away_team_id) ?? []
   return (
-    <Link href={`/fixtures/${fixture.id}`}>
-      <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3">
+    <Link href={`/fixtures/${fixture.id}`} className="pressable block">
+      <div className="rounded-xl border border-[var(--red)]/30 bg-[var(--red)]/5 px-3 py-2.5">
         <div className="flex items-center gap-2">
-          {/* Home */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <TeamCrest team={fixture.home_team} size="xs" />
               <span className="text-sm font-semibold text-[var(--text-primary)] truncate">{fixture.home_team?.short_name || fixture.home_team?.name}</span>
             </div>
-            {homeOwner && <span className="text-[9px] text-[var(--text-muted)] ml-5">{homeOwner.name}</span>}
+            <OwnerStack owners={homeOwners} size="xs" max={3} />
           </div>
-          {/* Score */}
-          <div className="shrink-0 text-center px-1">
+          <div className="shrink-0 text-center">
             <span className="text-lg font-black text-[var(--text-primary)] tabular-nums">
-              {fixture.home_score ?? 0}<span className="text-[var(--text-muted)] mx-0.5">-</span>{fixture.away_score ?? 0}
+              {fixture.home_score ?? 0}<span className="text-[var(--text-muted)] mx-0.5">–</span>{fixture.away_score ?? 0}
             </span>
-            <div className="text-[9px] text-red-400 font-bold text-center animate-pulse">LIVE</div>
+            <div className="text-[9px] text-[var(--red)] font-bold text-center animate-pulse">● LIVE</div>
           </div>
-          {/* Away */}
           <div className="flex-1 min-w-0 text-right">
             <div className="flex items-center gap-1.5 justify-end">
               <span className="text-sm font-semibold text-[var(--text-primary)] truncate">{fixture.away_team?.short_name || fixture.away_team?.name}</span>
               <TeamCrest team={fixture.away_team} size="xs" />
             </div>
-            {awayOwner && <span className="text-[9px] text-[var(--text-muted)] mr-5">{awayOwner.name}</span>}
+            <div className="flex justify-end">
+              <OwnerStack owners={awayOwners} size="xs" max={3} />
+            </div>
           </div>
         </div>
       </div>
@@ -723,77 +711,45 @@ function LiveFixtureCard({ fixture, ownerMap }: { fixture: any; ownerMap: Map<st
   )
 }
 
-function MiniFixtureCard({ fixture, ownerMap }: { fixture: any; ownerMap: Map<string, any> }) {
-  const homeOwner = ownerMap.get(fixture.home_team_id)
-  const awayOwner = ownerMap.get(fixture.away_team_id)
+// ─── Mini fixture row (for "my clubs this week") ──────────────────────────────
+
+function MiniFixtureRow({ fixture, ownerMap, divider }: { fixture: any; ownerMap: Map<string, any[]>; divider: boolean }) {
+  const homeOwners: any[] = ownerMap.get(fixture.home_team_id) ?? []
+  const awayOwners: any[] = ownerMap.get(fixture.away_team_id) ?? []
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
+  const comp = fixture.competition as any
 
   return (
-    <Link href={`/fixtures/${fixture.id}`}>
-      <div className={[
-        'rounded-xl border bg-[var(--bg-card)] px-3 py-2.5 transition-colors',
-        isLive ? 'border-red-500/30 bg-red-500/5' : 'border-[var(--border)] hover:border-[var(--accent)]/40',
-      ].join(' ')}>
-        <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-muted)] mb-1.5">
-          <Badge
-            variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'muted'}
-            className="text-[9px]"
-          >
-            {(fixture.competition as any)?.short_name}
-          </Badge>
-          <span className="ml-auto">
-            {isLive ? (
-              <span className="text-red-400 font-bold animate-pulse">LIVE</span>
-            ) : fixture.kickoff_time ? (
-              new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-            ) : '—'}
-          </span>
+    <Link href={`/fixtures/${fixture.id}`} className="pressable block">
+      <div className={['flex items-center gap-1.5 px-3 py-2.5 hover:bg-[var(--accent)]/5', divider ? 'border-b border-[var(--border)]' : ''].join(' ')}>
+        <CompetitionBadge shortName={comp?.short_name} name={comp?.name} type={comp?.competition_type} className="shrink-0 w-[28px] text-center" />
+        <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
+          <OwnerStack owners={homeOwners} size="xs" max={1} />
+          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.short_name || fixture.home_team?.name}</span>
+          <TeamCrest team={fixture.home_team} size="xs" />
         </div>
-        <div className="flex items-center gap-2">
-          {/* Home */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <TeamCrest team={fixture.home_team} size="xs" />
-              <span className="text-xs font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.name}</span>
-            </div>
-            {homeOwner && (
-              <div className="flex items-center gap-1 mt-0.5 ml-0.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: homeOwner.color }} />
-                <span className="text-[9px] text-[var(--text-muted)]">{homeOwner.name}</span>
-              </div>
-            )}
-          </div>
-          {/* Score/vs */}
-          <div className="shrink-0 min-w-[44px] text-center">
-            {(isCompleted || isLive) ? (
-              <span className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                {fixture.home_score}–{fixture.away_score}
-              </span>
-            ) : (
-              <span className="text-xs text-[var(--text-muted)]">vs</span>
-            )}
-          </div>
-          {/* Away */}
-          <div className="flex-1 min-w-0 text-right">
-            <div className="flex items-center gap-1 justify-end">
-              <span className="text-xs font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.name}</span>
-              <TeamCrest team={fixture.away_team} size="xs" />
-            </div>
-            {awayOwner && (
-              <div className="flex items-center gap-1 mt-0.5 justify-end mr-0.5">
-                <span className="text-[9px] text-[var(--text-muted)]">{awayOwner.name}</span>
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: awayOwner.color }} />
-              </div>
-            )}
-          </div>
+        <div className="shrink-0 w-[52px] text-center">
+          {(isCompleted || isLive) ? (
+            <span className="font-bold text-[13px] text-[var(--text-primary)] tabular-nums">{fixture.home_score}–{fixture.away_score}</span>
+          ) : (
+            <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+              {fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'vs'}
+            </span>
+          )}
+          {isLive && <div className="text-[8px] text-[var(--red)] font-bold animate-pulse">LIVE</div>}
+        </div>
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <TeamCrest team={fixture.away_team} size="xs" />
+          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.short_name || fixture.away_team?.name}</span>
+          <OwnerStack owners={awayOwners} size="xs" max={1} />
         </div>
       </div>
     </Link>
   )
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const EVENT_ICONS: Record<string, string> = {
   full_time: '⚽',
@@ -804,11 +760,6 @@ const EVENT_ICONS: Record<string, string> = {
   points_earned: '⭐',
   qualification: '🏆',
   elimination: '❌',
-  default: '📢',
-}
-
-function getEventIcon(type: string): string {
-  return EVENT_ICONS[type] ?? EVENT_ICONS.default
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -831,6 +782,5 @@ function formatCountdown(kickoff: string): string {
   const hrs = Math.floor(totalMins / 60)
   const mins = totalMins % 60
   if (hrs < 24) return `in ${hrs}h${mins > 0 ? ` ${mins}m` : ''}`
-  const days = Math.floor(hrs / 24)
-  return `in ${days}d`
+  return `in ${Math.floor(hrs / 24)}d`
 }

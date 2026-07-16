@@ -1,20 +1,54 @@
 @import "tailwindcss";
 
+/* ── Design Tokens ── */
 :root {
-  --bg: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-card-hover: #1f2335;
-  --border: #2a2d3e;
+  /* Backgrounds */
+  --bg: #0d0f1a;
+  --bg-card: #161929;
+  --bg-card-hover: #1d2038;
+  --bg-elevated: #1a1e30;
+  --bg-muted: #11131e;
+
+  /* Borders */
+  --border: #252840;
+  --border-strong: #32365a;
+
+  /* Text */
   --text-primary: #f0f2f8;
-  --text-secondary: #8b90a7;
-  --text-muted: #5a5f7a;
+  --text-secondary: #9ca3b8;
+  --text-muted: #5c6080;
+
+  /* Brand violet */
   --accent: #6366f1;
   --accent-hover: #4f46e5;
+  --accent-subtle: rgba(99,102,241,0.12);
+
+  /* Semantic colours */
+  --green: #10b981;
+  --green-subtle: rgba(16,185,129,0.12);
+  --amber: #f59e0b;
+  --amber-subtle: rgba(245,158,11,0.12);
+  --red: #ef4444;
+  --red-subtle: rgba(239,68,68,0.12);
+  --purple: #a855f7;
+  --purple-subtle: rgba(168,85,247,0.12);
+
+  /* Legacy aliases kept for backward-compat */
   --accent-green: #10b981;
   --accent-red: #ef4444;
   --accent-amber: #f59e0b;
-  --background: #0f1117;
+  --background: #0d0f1a;
   --foreground: #f0f2f8;
+
+  /* Shell dimensions */
+  --header-h: 56px;
+  --nav-h: 64px;
+
+  /* Radii */
+  --radius-xl: 18px;
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
 }
 
 @theme inline {
@@ -22,11 +56,14 @@
   --color-foreground: var(--foreground);
 }
 
-* { box-sizing: border-box; }
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  /* tabular nums everywhere — avoids layout shifts in score/pts columns */
+  font-variant-numeric: tabular-nums;
 }
 
 body {
@@ -35,32 +72,57 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+/* ── Focus ── */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
+/* ── Form elements ── */
 input, select, textarea {
   background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
   font-size: 14px;
   width: 100%;
+  transition: border-color 0.15s;
 }
-
 input::placeholder, textarea::placeholder { color: var(--text-muted); }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* ── Typography helpers ── */
+.text-display {
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.text-hero {
+  font-size: 2.5rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.label-caps {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 /* ── Animations ── */
@@ -69,60 +131,83 @@ input:focus, select:focus, textarea:focus {
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes skeleton-shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position: 400px 0; }
 }
-
-.animate-fade-in {
-  animation: fade-in 0.18s ease-out both;
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes score-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
 }
-.animate-slide-up {
-  animation: slide-up 0.22s ease-out both;
-}
 
-/* Stagger helpers — apply to nth children */
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
-.stagger-children > *:nth-child(n+6) { animation-delay: 200ms; }
+.animate-fade-in  { animation: fade-in 0.18s ease-out both; }
+.animate-slide-up { animation: slide-up 0.22s ease-out both; }
+.animate-sheet-up { animation: sheet-up 0.28s cubic-bezier(0.32,0.72,0,1) both; }
+.animate-backdrop { animation: backdrop-in 0.2s ease both; }
+.animate-score-pop { animation: score-pop 0.35s ease both; }
 
-/* Skeleton loader */
+/* Stagger */
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(n+6) { animation-delay: 200ms; }
+
+/* ── Skeleton ── */
 .skeleton {
   background: linear-gradient(
     90deg,
     var(--bg-card) 25%,
-    var(--bg-card-hover) 50%,
+    var(--bg-elevated) 50%,
     var(--bg-card) 75%
   );
   background-size: 800px 100%;
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
-/* ── Touch targets ── */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
+/* ── Active/press states ── */
+.pressable {
+  transition: transform 0.1s, opacity 0.1s;
 }
+.pressable:active { transform: scale(0.97); }
 
-/* ── Reduced motion: cut all animations and transitions ── */
+/* ── Horizontal scroll row (fixture cards) ── */
+.scroll-x {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-x > * { scroll-snap-align: start; flex-shrink: 0; }
+.scroll-x::-webkit-scrollbar { display: none; }
+
+/* ── Zone bar (table relegation / CL colours) ── */
+.zone-bar { width: 3px; border-radius: 1px; align-self: stretch; }
+
+/* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .skeleton {
-    animation: none;
-    background: var(--bg-card-hover);
-  }
+  .skeleton { animation: none; background: var(--bg-elevated); }
 }

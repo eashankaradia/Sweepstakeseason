@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
+import { FilterChip } from '@/components/ui/FilterChip'
 
 const EVENT_META: Record<string, { icon: string; color: string; label: string }> = {
   full_time: { icon: '⚽', color: 'text-[var(--text-primary)]', label: 'Result' },
@@ -162,24 +163,16 @@ export default function ActivityPage() {
 
   return (
     <AppShell title="Activity">
-      {/* Filter tabs */}
+      {/* Filter chips */}
       <div className="flex gap-1.5 mb-4 overflow-x-auto scrollbar-none -mx-4 px-4">
         {([
           { key: 'all', label: 'All' },
           { key: 'mine', label: 'Mine' },
           { key: 'powerups', label: 'Power-ups' },
         ] as { key: Filter; label: string }[]).map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              filter === f.key
-                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]'
-            }`}
-          >
+          <FilterChip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)}>
             {f.label}
-          </button>
+          </FilterChip>
         ))}
       </div>
 
