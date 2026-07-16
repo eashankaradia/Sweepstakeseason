@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
@@ -21,6 +21,23 @@ function posOrdinal(n: number): string {
   return s[(v - 20) % 10] ?? s[v] ?? s[0]
 }
 
+function vibrate(pattern: number | number[]) {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(pattern)
+  }
+}
+
+function formatCountdown(kickoff: string): string {
+  const diff = new Date(kickoff).getTime() - Date.now()
+  if (diff <= 0) return 'Starting soon'
+  const d = Math.floor(diff / 86400000)
+  const h = Math.floor((diff % 86400000) / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 export default function MyTeamsPage() {
   const [data, setData] = useState<any>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -29,14 +46,13 @@ export default function MyTeamsPage() {
   const [upcomingFixtures, setUpcomingFixtures] = useState<any[]>([])
   const [activating, setActivating] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'mine' | 'all'>('mine')
   const [donTeamId, setDonTeamId] = useState<string | null>(null)
   const [donMonth, setDonMonth] = useState<string>('')
 
-  useEffect(() => { loadData() }, [])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const leagueId = getLeagueIdCookie()
@@ -101,14 +117,16 @@ export default function MyTeamsPage() {
           .eq('league_id', leagueId)
           .eq('status', 'scheduled')
           .order('kickoff_time')
-          .limit(60),
+          .limit(80),
       ])
       setPowerUps(pups ?? [])
       setUpcomingFixtures((upFix ?? []) as any[])
     }
 
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => { loadData() }, [loadData])
 
   async function cancelDoubleOrNothing(teamId: string, month: string) {
     const supabase = createClient()
@@ -123,6 +141,7 @@ export default function MyTeamsPage() {
       .eq('team_id', teamId)
       .eq('season_month', month)
       .eq('status', 'pending')
+    vibrate(5)
     setActivating(null)
     setSuccessMsg('D-o-N cancelled.')
     setTimeout(() => setSuccessMsg(''), 3000)
@@ -146,10 +165,41 @@ export default function MyTeamsPage() {
     const { error } = await supabase.from('power_up_activations').insert(rows)
     setActivating(null)
     if (!error) {
+      vibrate([10, 50, 10])
       setSuccessMsg(`⚡ Double or Nothing locked in for ${formatMonth(month)}! ${fixtureIds.length} game${fixtureIds.length !== 1 ? 's' : ''} covered.`)
       setTimeout(() => setSuccessMsg(''), 4000)
       setDonTeamId(null)
       loadData()
+    } else {
+      setErrorMsg('Could not activate — check constraints.')
+      setTimeout(() => setErrorMsg(''), 4000)
+    }
+  }
+
+  async function activateReverse(targetPlayerId: string, teamId: string, fixtureId: string, month: string) {
+    const supabase = createClient()
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId || !myPlayerId) return
+    setActivating(`reverse-${fixtureId}`)
+    const { error } = await supabase.from('power_up_activations').insert({
+      league_id: leagueId,
+      player_id: myPlayerId,
+      power_up_type: 'reverse',
+      fixture_id: fixtureId,
+      team_id: teamId,
+      target_player_id: targetPlayerId,
+      season_month: month,
+      status: 'pending',
+    })
+    setActivating(null)
+    if (!error) {
+      vibrate([20, 40, 20])
+      setSuccessMsg('🔄 Reverse activated! Ownership swaps for that match.')
+      setTimeout(() => setSuccessMsg(''), 4000)
+      loadData()
+    } else {
+      setErrorMsg(error.code === '23505' ? 'You have already targeted this player this season.' : 'Could not activate Reverse.')
+      setTimeout(() => setErrorMsg(''), 4000)
     }
   }
 
@@ -178,16 +228,28 @@ export default function MyTeamsPage() {
       .filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled')
       .map((p: any) => p.season_month)
   )
-  const usedTeamIds = new Set(powerUps.filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled').map((p: any) => p.team_id))
+  const usedTeamIds = new Set(
+    powerUps
+      .filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled')
+      .map((p: any) => p.team_id)
+  )
+  const reversesUsed = powerUps.filter((p: any) => p.power_up_type === 'reverse' && p.status !== 'cancelled')
+  const reversedTargetIds = new Set(reversesUsed.map((p: any) => p.target_player_id).filter(Boolean))
 
   const myEntry = playerEntries.find((e: any) => e.isMe)
   const myPosition = myEntry ? playerEntries.indexOf(myEntry) + 1 : null
+  const myTeamIds = new Set<string>((myEntry?.teams ?? []).map((t: any) => t.team.id))
 
   return (
     <AppShell title="My Teams">
       {successMsg && (
-        <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium px-3 py-2.5 rounded-xl animate-pulse">
+        <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium px-3 py-2.5 rounded-xl">
           {successMsg}
+        </div>
+      )}
+      {errorMsg && (
+        <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium px-3 py-2.5 rounded-xl">
+          {errorMsg}
         </div>
       )}
 
@@ -207,7 +269,9 @@ export default function MyTeamsPage() {
             powerUps={powerUps}
             usedMonths={usedMonths}
             usedTeamIds={usedTeamIds}
+            reversedTargetIds={reversedTargetIds}
             upcomingFixtures={upcomingFixtures}
+            myTeamIds={myTeamIds}
             activating={activating}
             donTeamId={donTeamId}
             setDonTeamId={setDonTeamId}
@@ -215,6 +279,8 @@ export default function MyTeamsPage() {
             setDonMonth={setDonMonth}
             onActivate={activateDoubleOrNothing}
             onCancel={cancelDoubleOrNothing}
+            onActivateReverse={activateReverse}
+            allPlayerEntries={playerEntries}
           />
         ) : (
           <EmptyState icon="👤" title="Not in this league" description="You don't have a player slot in this league yet." />
@@ -235,7 +301,9 @@ function MineView({
   powerUps,
   usedMonths,
   usedTeamIds,
+  reversedTargetIds,
   upcomingFixtures,
+  myTeamIds,
   activating,
   donTeamId,
   setDonTeamId,
@@ -243,6 +311,8 @@ function MineView({
   setDonMonth,
   onActivate,
   onCancel,
+  onActivateReverse,
+  allPlayerEntries,
 }: {
   entry: any
   position: number | null
@@ -250,7 +320,9 @@ function MineView({
   powerUps: any[]
   usedMonths: Set<string>
   usedTeamIds: Set<string>
+  reversedTargetIds: Set<string>
   upcomingFixtures: any[]
+  myTeamIds: Set<string>
   activating: string | null
   donTeamId: string | null
   setDonTeamId: (id: string | null) => void
@@ -258,6 +330,8 @@ function MineView({
   setDonMonth: (m: string) => void
   onActivate: (teamId: string, fixtureIds: string[], month: string) => void
   onCancel: (teamId: string, month: string) => void
+  onActivateReverse: (targetPlayerId: string, teamId: string, fixtureId: string, month: string) => void
+  allPlayerEntries: any[]
 }) {
   const { player, teams, total } = entry
   const medals = ['🥇', '🥈', '🥉']
@@ -269,12 +343,21 @@ function MineView({
   const totalGA = teams.reduce((s: number, t: any) => s + (t.score?.goals_against ?? 0), 0)
   const totalGD = totalGF - totalGA
 
-  // Available months: next 4 calendar months from today
+  const [statsExpanded, setStatsExpanded] = useState(true)
+
   const now = new Date()
   const availableMonths = Array.from({ length: 4 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
     return d.toISOString().substring(0, 7)
   })
+
+  const currentMonth = now.toISOString().substring(0, 7)
+  const donAvailableThisMonth = !usedMonths.has(currentMonth)
+
+  // Next upcoming fixture involving any of my teams
+  const myNextFixture = upcomingFixtures.find(f =>
+    myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id)
+  )
 
   function getTeamFixturesInMonth(teamId: string, month: string) {
     return upcomingFixtures.filter(f => {
@@ -285,74 +368,75 @@ function MineView({
 
   function openDon(teamId: string) {
     setDonTeamId(teamId)
-    // Default to first month that has fixtures
     const firstMonth = availableMonths.find(m => !usedMonths.has(m) && getTeamFixturesInMonth(teamId, m).length > 0)
     setDonMonth(firstMonth ?? availableMonths[0])
   }
 
   return (
     <div className="space-y-3">
-      {/* My summary card */}
-      <div
-        className="rounded-2xl border p-4"
-        style={{ borderColor: `${player.color}40`, backgroundColor: `${player.color}08` }}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative shrink-0">
-            <Avatar name={player.name} color={player.color} size="lg" />
-            {position != null && position <= 3 && (
-              <span className="absolute -top-1 -right-1 text-base leading-none">{medals[position - 1]}</span>
-            )}
-            {position != null && position > 3 && (
-              <div
-                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[var(--bg)]"
-                style={{ backgroundColor: player.color, color: '#fff' }}
-              >
-                {position}
-              </div>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-base text-[var(--text-primary)]">{player.name}</p>
-            <div className="flex items-center gap-2 mt-0.5">
-              {position != null && (
-                <span className="text-xs text-[var(--text-secondary)]">
-                  {position}{posOrdinal(position)} of {totalPlayers}
-                </span>
-              )}
-              <span className="text-[10px] text-[var(--text-muted)]">· {teams.length} clubs</span>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="font-black text-3xl" style={{ color: player.color }}>{total}</p>
-            <p className="text-xs text-[var(--text-secondary)] -mt-0.5">points</p>
-          </div>
-        </div>
+      {/* Control Centre panel */}
+      <ControlCentre
+        player={player}
+        position={position}
+        totalPlayers={totalPlayers}
+        nextFixture={myNextFixture}
+        myTeamIds={myTeamIds}
+        donAvailableThisMonth={donAvailableThisMonth}
+        reversedTargetIds={reversedTargetIds}
+        total={total}
+        medals={medals}
+      />
 
-        <div className="grid grid-cols-5 gap-2 text-center">
-          {[
-            { label: 'W', value: totalW, color: 'text-emerald-400' },
-            { label: 'D', value: totalD, color: 'text-amber-400' },
-            { label: 'L', value: totalL, color: 'text-red-400' },
-            { label: 'GD', value: totalGD >= 0 ? `+${totalGD}` : totalGD, color: totalGD > 0 ? 'text-emerald-400' : totalGD < 0 ? 'text-red-400' : 'text-[var(--text-muted)]' },
-            { label: 'GF', value: totalGF, color: 'text-[var(--text-secondary)]' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-xl bg-[var(--bg-card)]/70 py-2">
-              <p className={`font-bold text-sm ${color}`}>{value}</p>
-              <p className="text-[9px] text-[var(--text-muted)] mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
+      {/* Aggregate stats — collapsible */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2.5 min-h-[44px]"
+          onClick={() => setStatsExpanded(v => !v)}
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Season stats</span>
+          <svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-200 ${statsExpanded ? '' : '-rotate-90'}`}
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {statsExpanded && (
+          <div className="grid grid-cols-5 gap-2 px-3 pb-3">
+            {[
+              { label: 'W', value: totalW, color: 'text-emerald-400' },
+              { label: 'D', value: totalD, color: 'text-amber-400' },
+              { label: 'L', value: totalL, color: 'text-red-400' },
+              { label: 'GD', value: totalGD >= 0 ? `+${totalGD}` : totalGD, color: totalGD > 0 ? 'text-emerald-400' : totalGD < 0 ? 'text-red-400' : 'text-[var(--text-muted)]' },
+              { label: 'GF', value: totalGF, color: 'text-[var(--text-secondary)]' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl bg-[var(--bg)]/70 py-2 text-center">
+                <p className={`font-bold text-sm ${color}`}>{value}</p>
+                <p className="text-[9px] text-[var(--text-muted)] mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Power-up tiles */}
-      <PowerUpTiles usedMonths={usedMonths} powerUps={powerUps} />
+      <PowerUpTiles
+        usedMonths={usedMonths}
+        powerUps={powerUps}
+        activating={activating}
+        reversedTargetIds={reversedTargetIds}
+        upcomingFixtures={upcomingFixtures}
+        myTeamIds={myTeamIds}
+        myPlayerId={entry.player.id}
+        allPlayerEntries={allPlayerEntries}
+        onActivateReverse={onActivateReverse}
+      />
 
       {/* Teams list */}
       <div className="space-y-2">
         {teams.map(({ team, score, competition, allComps }: any) => {
           const alreadyUsed = usedTeamIds.has(team.id)
-          const pendingForTeam = powerUps.filter((p: any) => p.team_id === team.id && p.status === 'pending')
+          const pendingForTeam = powerUps.filter((p: any) => p.team_id === team.id && p.power_up_type === 'double_or_nothing' && p.status === 'pending')
           const canActivate = !alreadyUsed && !pendingForTeam.length
           const gf = score?.goals_for ?? 0
           const ga = score?.goals_against ?? 0
@@ -363,107 +447,31 @@ function MineView({
           const monthFixtures = isOpen && donMonth ? getTeamFixturesInMonth(team.id, donMonth) : []
 
           return (
-            <div key={team.id} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-              <div className="flex items-center gap-3 px-3 pt-3 pb-2.5">
-                <Link href={`/teams/${team.id}`} className="shrink-0">
-                  <TeamCrest team={team} size="md" />
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <Link href={`/teams/${team.id}`}>
-                    <p className="font-semibold text-sm text-[var(--text-primary)] truncate hover:text-[var(--accent)] transition-colors">{team.name}</p>
-                  </Link>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    {allComps.filter(Boolean).map((comp: any) => (
-                      <Badge
-                        key={comp.id}
-                        variant={comp.competition_type === 'european' ? 'purple' : 'muted'}
-                        className="text-[9px] px-1 py-0 leading-4"
-                      >
-                        {comp.short_name}
-                      </Badge>
-                    ))}
-                    {team.league_position && (
-                      <span className="text-[9px] text-[var(--text-muted)]">#{team.league_position}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="font-bold text-xl text-[var(--text-primary)]">{score?.total_points ?? 0}</div>
-                  <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
-                </div>
-              </div>
-
-              {hasStats && (
-                <div className="grid grid-cols-5 gap-1 px-3 pb-2.5 text-center">
-                  {[
-                    { label: 'W', value: score.wins, color: 'text-emerald-400' },
-                    { label: 'D', value: score.draws, color: 'text-amber-400' },
-                    { label: 'L', value: score.losses, color: 'text-red-400' },
-                    { label: 'GD', value: gd >= 0 ? `+${gd}` : gd, color: gd > 0 ? 'text-emerald-400' : gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]' },
-                    { label: 'GF', value: gf, color: 'text-[var(--text-secondary)]' },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className="rounded-md bg-[var(--bg)] py-1.5">
-                      <p className={`font-semibold text-xs ${color}`}>{value}</p>
-                      <p className="text-[9px] text-[var(--text-muted)]">{label}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* D-o-N footer */}
-              <div className="border-t border-[var(--border)]">
-                {pendingForTeam.length > 0 ? (
-                  <div className="px-3 py-2 space-y-1.5">
-                    {/* Dedupe by season_month */}
-                    {[...new Set(pendingForTeam.map((p: any) => p.season_month))].map((month: any) => (
-                      <div key={month} className="flex items-center gap-2">
-                        <span>⚡</span>
-                        <span className="text-[10px] font-semibold text-[var(--accent)] flex-1">
-                          D-o-N active · {formatMonth(month)}
-                        </span>
-                        <button
-                          onClick={() => onCancel(team.id, month)}
-                          disabled={activating === team.id}
-                          className="text-[9px] text-red-400 border border-red-400/30 px-2 py-0.5 rounded-full hover:bg-red-400/10 transition-colors disabled:opacity-40"
-                        >
-                          {activating === team.id ? '…' : 'Cancel'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : alreadyUsed ? (
-                  <div className="px-3 py-2">
-                    <span className="text-[10px] text-[var(--text-muted)]">⚡ D-o-N used this season</span>
-                  </div>
-                ) : isOpen ? (
-                  <DonPicker
-                    team={team}
-                    availableMonths={availableMonths}
-                    usedMonths={usedMonths}
-                    donMonth={donMonth}
-                    setDonMonth={setDonMonth}
-                    monthFixtures={monthFixtures}
-                    activating={activating}
-                    onConfirm={() => onActivate(team.id, monthFixtures.map(f => f.id), donMonth)}
-                    onCancel={() => setDonTeamId(null)}
-                  />
-                ) : canActivate ? (
-                  <div className="px-3 py-2 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-[var(--text-muted)]">⚡ Double or Nothing available</span>
-                    <button
-                      onClick={() => openDon(team.id)}
-                      className="text-[10px] font-bold text-[var(--accent)] border border-[var(--accent)]/40 px-2.5 py-1 rounded-full hover:bg-[var(--accent)]/10 transition-colors"
-                    >
-                      Activate
-                    </button>
-                  </div>
-                ) : (
-                  <div className="px-3 py-2">
-                    <span className="text-[10px] text-[var(--text-muted)]">No upcoming fixtures</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <TeamCard
+              key={team.id}
+              team={team}
+              score={score}
+              gf={gf}
+              ga={ga}
+              gd={gd}
+              hasStats={hasStats}
+              allComps={allComps}
+              competition={competition}
+              pendingForTeam={pendingForTeam}
+              alreadyUsed={alreadyUsed}
+              canActivate={canActivate}
+              isOpen={isOpen}
+              donMonth={donMonth}
+              setDonMonth={setDonMonth}
+              monthFixtures={monthFixtures}
+              availableMonths={availableMonths}
+              usedMonths={usedMonths}
+              activating={activating}
+              onActivate={onActivate}
+              onCancel={onCancel}
+              openDon={openDon}
+              closeDon={() => setDonTeamId(null)}
+            />
           )
         })}
       </div>
@@ -471,16 +479,229 @@ function MineView({
   )
 }
 
+function ControlCentre({
+  player,
+  position,
+  totalPlayers,
+  nextFixture,
+  myTeamIds,
+  donAvailableThisMonth,
+  reversedTargetIds,
+  total,
+  medals,
+}: {
+  player: any
+  position: number | null
+  totalPlayers: number
+  nextFixture: any
+  myTeamIds: Set<string>
+  donAvailableThisMonth: boolean
+  reversedTargetIds: Set<string>
+  total: number
+  medals: string[]
+}) {
+  return (
+    <div
+      className="rounded-2xl border p-4 space-y-3"
+      style={{ borderColor: `${player.color}40`, backgroundColor: `${player.color}08` }}
+    >
+      {/* Player header */}
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <Avatar name={player.name} color={player.color} size="lg" />
+          {position != null && position <= 3 && (
+            <span className="absolute -top-1 -right-1 text-base leading-none">{medals[position - 1]}</span>
+          )}
+          {position != null && position > 3 && (
+            <div
+              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[var(--bg)]"
+              style={{ backgroundColor: player.color, color: '#fff' }}
+            >
+              {position}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-base text-[var(--text-primary)]">{player.name}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {position != null && (
+              <span className="text-xs text-[var(--text-secondary)]">
+                {position}{posOrdinal(position)} of {totalPlayers}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="font-black text-3xl" style={{ color: player.color }}>{total}</p>
+          <p className="text-xs text-[var(--text-secondary)] -mt-0.5">points</p>
+        </div>
+      </div>
+
+      {/* Next fixture deadline */}
+      {nextFixture && (() => {
+        const isHome = myTeamIds.has(nextFixture.home_team_id)
+        const myTeam = isHome ? nextFixture.home_team : nextFixture.away_team
+        const opp = isHome ? nextFixture.away_team : nextFixture.home_team
+        const kickoff = new Date(nextFixture.kickoff_time)
+        return (
+          <div className="rounded-xl bg-[var(--bg-card)]/70 border border-[var(--border)] px-3 py-2.5 flex items-center gap-3">
+            <div className="shrink-0">
+              <TeamCrest team={myTeam} size="sm" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Next deadline</p>
+              <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                {isHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
+              </p>
+              <p className="text-[10px] text-[var(--text-secondary)]">
+                {kickoff.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-xs font-bold text-[var(--accent)]">{formatCountdown(nextFixture.kickoff_time)}</p>
+              <p className="text-[9px] text-[var(--text-muted)]">to kickoff</p>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Power-up availability chips */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[10px] font-semibold ${donAvailableThisMonth ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)]'}`}>
+          <span>⚡</span>
+          <span>D-o-N {donAvailableThisMonth ? 'available' : 'used this month'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-400 text-[10px] font-semibold">
+          <span>🔄</span>
+          <span>Reverse · {reversedTargetIds.size} used</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TeamCard({
+  team, score, gf, ga, gd, hasStats, allComps, pendingForTeam,
+  alreadyUsed, canActivate, isOpen, donMonth, setDonMonth, monthFixtures,
+  availableMonths, usedMonths, activating, onActivate, onCancel, openDon, closeDon,
+}: any) {
+  const [statsOpen, setStatsOpen] = useState(true)
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      <div className="flex items-center gap-3 px-3 pt-3 pb-2.5">
+        <Link href={`/teams/${team.id}`} className="shrink-0">
+          <TeamCrest team={team} size="md" />
+        </Link>
+        <div className="flex-1 min-w-0">
+          <Link href={`/teams/${team.id}`}>
+            <p className="font-semibold text-sm text-[var(--text-primary)] truncate hover:text-[var(--accent)] transition-colors">{team.name}</p>
+          </Link>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {allComps.filter(Boolean).map((comp: any) => (
+              <Badge key={comp.id} variant={comp.competition_type === 'european' ? 'purple' : 'muted'} className="text-[9px] px-1 py-0 leading-4">
+                {comp.short_name}
+              </Badge>
+            ))}
+            {team.league_position && (
+              <span className="text-[9px] text-[var(--text-muted)]">#{team.league_position}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right">
+            <div className="font-bold text-xl text-[var(--text-primary)]">{score?.total_points ?? 0}</div>
+            <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
+          </div>
+          {hasStats && (
+            <button
+              onClick={() => setStatsOpen(v => !v)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--bg)] transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-200 ${statsOpen ? '' : '-rotate-90'}`}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {hasStats && statsOpen && (
+        <div className="grid grid-cols-5 gap-1 px-3 pb-2.5 text-center">
+          {[
+            { label: 'W', value: score.wins, color: 'text-emerald-400' },
+            { label: 'D', value: score.draws, color: 'text-amber-400' },
+            { label: 'L', value: score.losses, color: 'text-red-400' },
+            { label: 'GD', value: gd >= 0 ? `+${gd}` : gd, color: gd > 0 ? 'text-emerald-400' : gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]' },
+            { label: 'GF', value: gf, color: 'text-[var(--text-secondary)]' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="rounded-md bg-[var(--bg)] py-1.5">
+              <p className={`font-semibold text-xs ${color}`}>{value}</p>
+              <p className="text-[9px] text-[var(--text-muted)]">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* D-o-N footer */}
+      <div className="border-t border-[var(--border)]">
+        {pendingForTeam.length > 0 ? (
+          <div className="px-3 py-2 space-y-1.5">
+            {[...new Set(pendingForTeam.map((p: any) => p.season_month))].map((month: any) => (
+              <div key={month} className="flex items-center gap-2">
+                <span>⚡</span>
+                <span className="text-[10px] font-semibold text-[var(--accent)] flex-1">D-o-N active · {formatMonth(month)}</span>
+                <button
+                  onClick={() => onCancel(team.id, month)}
+                  disabled={activating === team.id}
+                  className="text-[9px] text-red-400 border border-red-400/30 px-2 py-0.5 rounded-full hover:bg-red-400/10 transition-colors disabled:opacity-40 min-h-[28px]"
+                >
+                  {activating === team.id ? '…' : 'Cancel'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : alreadyUsed ? (
+          <div className="px-3 py-2">
+            <span className="text-[10px] text-[var(--text-muted)]">⚡ D-o-N used this season for this club</span>
+          </div>
+        ) : isOpen ? (
+          <DonPicker
+            team={team}
+            availableMonths={availableMonths}
+            usedMonths={usedMonths}
+            donMonth={donMonth}
+            setDonMonth={setDonMonth}
+            monthFixtures={monthFixtures}
+            activating={activating}
+            onConfirm={() => onActivate(team.id, monthFixtures.map((f: any) => f.id), donMonth)}
+            onCancel={closeDon}
+          />
+        ) : canActivate ? (
+          <div className="px-3 py-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-[var(--text-muted)]">⚡ Double or Nothing available</span>
+            <button
+              onClick={() => openDon(team.id)}
+              className="text-[10px] font-bold text-[var(--accent)] border border-[var(--accent)]/40 px-2.5 py-1 rounded-full hover:bg-[var(--accent)]/10 transition-colors min-h-[30px]"
+            >
+              Activate
+            </button>
+          </div>
+        ) : (
+          <div className="px-3 py-2">
+            <span className="text-[10px] text-[var(--text-muted)]">No upcoming fixtures</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DonPicker({
-  team,
-  availableMonths,
-  usedMonths,
-  donMonth,
-  setDonMonth,
-  monthFixtures,
-  activating,
-  onConfirm,
-  onCancel,
+  team, availableMonths, usedMonths, donMonth, setDonMonth,
+  monthFixtures, activating, onConfirm, onCancel,
 }: {
   team: any
   availableMonths: string[]
@@ -498,8 +719,6 @@ function DonPicker({
         <span className="text-sm">⚡</span>
         <p className="text-xs font-bold text-[var(--accent)]">Double or Nothing — pick a month</p>
       </div>
-
-      {/* Month pills */}
       <div className="flex gap-1.5 flex-wrap">
         {availableMonths.map(m => {
           const alreadyUsed = usedMonths.has(m)
@@ -509,7 +728,7 @@ function DonPicker({
             <button
               key={m}
               onClick={() => !alreadyUsed && setDonMonth(m)}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all min-h-[30px] ${
                 alreadyUsed
                   ? 'opacity-30 cursor-not-allowed bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]'
                   : isSelected
@@ -522,21 +741,17 @@ function DonPicker({
           )
         })}
       </div>
-
-      {/* Fixtures preview */}
       {monthFixtures.length > 0 ? (
         <div className="space-y-1">
           <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Games covered ({monthFixtures.length})</p>
-          {monthFixtures.map(f => {
+          {monthFixtures.map((f: any) => {
             const isHome = f.home_team_id === team.id
             const opp = isHome ? f.away_team : f.home_team
             return (
               <div key={f.id} className="flex items-center gap-2 py-1 px-2 rounded-lg bg-[var(--bg-card)]">
                 <span className="text-[9px] font-semibold text-[var(--text-muted)] w-4">{isHome ? 'H' : 'A'}</span>
                 <TeamCrest team={opp} size="xs" />
-                <span className="text-[10px] text-[var(--text-primary)] flex-1 truncate">
-                  {isHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
-                </span>
+                <span className="text-[10px] text-[var(--text-primary)] flex-1 truncate">{isHome ? 'vs' : '@'} {opp?.short_name || opp?.name}</span>
                 <span className="text-[9px] text-[var(--text-muted)]">
                   {new Date(f.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                 </span>
@@ -547,19 +762,17 @@ function DonPicker({
       ) : (
         <p className="text-[10px] text-[var(--text-muted)] italic">No fixtures found in {formatMonth(donMonth)}</p>
       )}
-
-      {/* Confirm / cancel */}
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={onConfirm}
           disabled={activating === team.id || monthFixtures.length === 0}
-          className="flex-1 text-xs font-bold bg-[var(--accent)] text-white py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="flex-1 text-xs font-bold bg-[var(--accent)] text-white py-2.5 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40 min-h-[44px]"
         >
           {activating === team.id ? 'Locking in…' : `⚡ Lock in ${formatMonth(donMonth)}`}
         </button>
         <button
           onClick={onCancel}
-          className="px-3 py-2 text-xs text-[var(--text-secondary)] rounded-xl hover:bg-[var(--bg)] transition-colors"
+          className="px-3 py-2.5 text-xs text-[var(--text-secondary)] rounded-xl hover:bg-[var(--bg)] transition-colors min-h-[44px]"
         >
           Cancel
         </button>
@@ -568,10 +781,38 @@ function DonPicker({
   )
 }
 
-function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; powerUps: any[] }) {
+function PowerUpTiles({
+  usedMonths,
+  powerUps,
+  activating,
+  reversedTargetIds,
+  upcomingFixtures,
+  myTeamIds,
+  myPlayerId,
+  allPlayerEntries,
+  onActivateReverse,
+}: {
+  usedMonths: Set<string>
+  powerUps: any[]
+  activating: string | null
+  reversedTargetIds: Set<string>
+  upcomingFixtures: any[]
+  myTeamIds: Set<string>
+  myPlayerId: string
+  allPlayerEntries: any[]
+  onActivateReverse: (targetPlayerId: string, teamId: string, fixtureId: string, month: string) => void
+}) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [reverseStep, setReverseStep] = useState<'pick-opponent' | 'pick-fixture'>('pick-opponent')
+  const [reverseTarget, setReverseTarget] = useState<any>(null)
+  const [reverseFixtureId, setReverseFixtureId] = useState<string | null>(null)
 
-  const toggle = (id: string) => setExpanded(prev => (prev === id ? null : id))
+  const toggle = (id: string) => {
+    setExpanded(prev => (prev === id ? null : id))
+    setReverseStep('pick-opponent')
+    setReverseTarget(null)
+    setReverseFixtureId(null)
+  }
 
   const now = new Date()
   const currentMonth = now.toISOString().substring(0, 7)
@@ -591,7 +832,7 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
       icon: '🔄',
       name: 'Reverse',
       available: true,
-      status: 'Once per player',
+      status: `${reversedTargetIds.size} used`,
       statusColor: 'text-purple-400',
     },
     {
@@ -604,6 +845,28 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
     },
   ]
 
+  // Opponents for Reverse: all players except me, not already targeted
+  const opponents = allPlayerEntries.filter((e: any) => e.player.id !== myPlayerId && !reversedTargetIds.has(e.player.id))
+
+  // Upcoming fixtures for selected opponent's teams
+  const targetTeamIds = reverseTarget ? new Set<string>(reverseTarget.teams.map((t: any) => t.team.id) as string[]) : new Set<string>()
+  const targetFixtures = reverseTarget
+    ? upcomingFixtures.filter(f => targetTeamIds.has(f.home_team_id) || targetTeamIds.has(f.away_team_id)).slice(0, 10)
+    : []
+
+  function confirmReverse() {
+    if (!reverseTarget || !reverseFixtureId) return
+    const fixture = upcomingFixtures.find(f => f.id === reverseFixtureId)
+    if (!fixture) return
+    const teamId = targetTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id
+    const month = (fixture.kickoff_time as string).substring(0, 7)
+    onActivateReverse(reverseTarget.player.id, teamId, reverseFixtureId, month)
+    setExpanded(null)
+    setReverseStep('pick-opponent')
+    setReverseTarget(null)
+    setReverseFixtureId(null)
+  }
+
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
       <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider px-3 pt-3 pb-2">Power-ups</p>
@@ -613,7 +876,7 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
           <button
             key={tile.id}
             onClick={() => toggle(tile.id)}
-            className={`rounded-xl border p-2.5 text-left transition-all ${
+            className={`rounded-xl border p-2.5 text-left transition-all min-h-[80px] ${
               !tile.available
                 ? 'opacity-40 border-[var(--border)] bg-[var(--bg)]'
                 : expanded === tile.id
@@ -625,12 +888,8 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
             <div className="text-[10px] font-semibold text-[var(--text-primary)] leading-tight">{tile.name}</div>
             <div className={`text-[9px] mt-1 font-medium ${tile.statusColor}`}>{tile.status}</div>
             <div className="mt-1.5 flex justify-end">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className={`w-3 h-3 text-[var(--text-muted)] transition-transform ${expanded === tile.id ? 'rotate-180' : ''}`}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className={`w-3 h-3 text-[var(--text-muted)] transition-transform duration-200 ${expanded === tile.id ? 'rotate-180' : ''}`}
               >
                 <path d="M6 9l6 6 6-6" />
               </svg>
@@ -639,6 +898,7 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
         ))}
       </div>
 
+      {/* D-o-N info */}
       {expanded === 'don' && (
         <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
           <div className="flex items-center gap-2 mb-1">
@@ -663,29 +923,109 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
               <p className="text-[13px] font-black text-red-400">−3 pts</p>
             </div>
           </div>
-          <p className="text-[10px] text-[var(--text-muted)]">
-            Each club can only be boosted once per season. One month-boost available per calendar month. Activate on a team card below.
-          </p>
+          <p className="text-[10px] text-[var(--text-muted)]">Activate on a team card below. Each club can only be boosted once per season.</p>
         </div>
       )}
 
+      {/* Reverse UI */}
       {expanded === 'reverse' && (
-        <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
-          <div className="flex items-center gap-2 mb-1">
+        <div className="border-t border-[var(--border)] px-3 py-3 space-y-3">
+          <div className="flex items-center gap-2">
             <span className="text-sm">🔄</span>
             <p className="font-semibold text-sm text-[var(--text-primary)]">Reverse</p>
-            <Badge variant="purple" className="text-[9px] ml-auto">once per player</Badge>
+            <Badge variant="purple" className="text-[9px] ml-auto">once per opponent</Badge>
           </div>
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Play this on any fixture where an opponent's club is involved. For that match only,{' '}
-            <span className="text-[var(--accent)] font-medium">ownership of both clubs swaps</span> — you get their points, they get yours.
+            Target an opponent's club in an upcoming fixture. For that match, ownership swaps — you get their points, they get yours.
           </p>
-          <p className="text-[10px] text-[var(--text-muted)]">
-            You can only target each opponent once per season. Best used when their star club faces a tough away day and yours is flying at home.
-          </p>
+
+          {opponents.length === 0 ? (
+            <p className="text-[10px] text-amber-400 font-medium">You've targeted all opponents this season.</p>
+          ) : reverseStep === 'pick-opponent' ? (
+            <div className="space-y-1.5">
+              <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Pick opponent to target</p>
+              {opponents.map((opp: any) => (
+                <button
+                  key={opp.player.id}
+                  onClick={() => { setReverseTarget(opp); setReverseStep('pick-fixture'); setReverseFixtureId(null) }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg)] hover:border-purple-500/40 hover:bg-purple-500/5 transition-all text-left min-h-[48px]"
+                >
+                  <Avatar name={opp.player.name} color={opp.player.color} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{opp.player.name}</p>
+                    <p className="text-[10px] text-[var(--text-secondary)]">{opp.teams.length} team{opp.teams.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-[var(--text-muted)] shrink-0">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setReverseStep('pick-opponent'); setReverseTarget(null); setReverseFixtureId(null) }}
+                  className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 min-h-[32px]"
+                >
+                  ← Back
+                </button>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex-1">
+                  Pick a fixture — <span style={{ color: reverseTarget.player.color }}>{reverseTarget.player.name}</span>
+                </p>
+              </div>
+
+              {targetFixtures.length === 0 ? (
+                <p className="text-[10px] text-[var(--text-muted)] italic">No upcoming fixtures for this player's clubs.</p>
+              ) : (
+                <div className="space-y-1">
+                  {targetFixtures.map((f: any) => {
+                    const tId = targetTeamIds.has(f.home_team_id) ? f.home_team_id : f.away_team_id
+                    const tTeam = tId === f.home_team_id ? f.home_team : f.away_team
+                    const oppTeam = tId === f.home_team_id ? f.away_team : f.home_team
+                    const isSelected = reverseFixtureId === f.id
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setReverseFixtureId(f.id)}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all text-left min-h-[48px] ${
+                          isSelected
+                            ? 'border-purple-500/60 bg-purple-500/10'
+                            : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-purple-500/30'
+                        }`}
+                      >
+                        <TeamCrest team={tTeam} size="xs" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                            {tTeam?.short_name} vs {oppTeam?.short_name}
+                          </p>
+                          <p className="text-[9px] text-[var(--text-secondary)]">
+                            {new Date(f.kickoff_time).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            {' · '}{f.competition?.short_name}
+                          </p>
+                        </div>
+                        <div className={`w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${isSelected ? 'bg-purple-500 border-purple-500' : 'border-[var(--border)]'}`} />
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {reverseFixtureId && (
+                <button
+                  onClick={confirmReverse}
+                  disabled={!!activating}
+                  className="w-full mt-1 py-2.5 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-500 transition-colors disabled:opacity-50 min-h-[44px]"
+                >
+                  {activating ? 'Activating…' : '🔄 Confirm Reverse'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
+      {/* Giant Killer info */}
       {expanded === 'gk' && (
         <div className="border-t border-[var(--border)] px-3 py-3 space-y-2">
           <div className="flex items-center gap-2 mb-1">
@@ -694,11 +1034,9 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
             <Badge variant="warning" className="text-[9px] ml-auto">Auto-awarded</Badge>
           </div>
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            If one of your clubs beats a team that started the match <span className="font-semibold text-[var(--text-primary)]">5+ league places above them</span>, you automatically earn a Giant Killer bonus — no activation needed.
+            If one of your clubs beats a team that started the match <span className="font-semibold text-[var(--text-primary)]">5+ league places above them</span>, you automatically earn a Giant Killer bonus.
           </p>
-          <p className="text-[10px] text-[var(--text-muted)]">
-            This rewards holding lower-ranked clubs. A win from 10 places below earns more than a win from 5 — the bigger the upset, the bigger the bonus.
-          </p>
+          <p className="text-[10px] text-[var(--text-muted)]">No activation needed — the bigger the upset, the bigger the bonus.</p>
         </div>
       )}
     </div>
@@ -706,9 +1044,25 @@ function PowerUpTiles({ usedMonths, powerUps }: { usedMonths: Set<string>; power
 }
 
 function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myUserId: string | null }) {
+  const [collapsed, setCollapsed] = useState(false)
+
   return (
     <div className="space-y-3">
-      {playerEntries.map(({ player, teams, total, isMe }: any) => (
+      <button
+        className="flex items-center gap-2 w-full text-left"
+        onClick={() => setCollapsed(v => !v)}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] flex-1">
+          {playerEntries.length} players
+        </p>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {!collapsed && playerEntries.map(({ player, teams, total, isMe }: any) => (
         <div
           key={player.id}
           className="rounded-xl border overflow-hidden"
@@ -745,7 +1099,7 @@ function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myU
               const ga = score?.goals_against ?? 0
               const gd = gf - ga
               return (
-                <div key={team.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-2">
+                <div key={team.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-2 min-h-[44px]">
                   <div className="flex items-center gap-2.5">
                     <Link href={`/teams/${team.id}`} className="shrink-0">
                       <TeamCrest team={team} size="sm" />
@@ -756,10 +1110,7 @@ function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myU
                       </Link>
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         {competition && (
-                          <Badge
-                            variant={competition.competition_type === 'european' ? 'purple' : 'muted'}
-                            className="text-[9px] px-1 py-0 leading-4"
-                          >
+                          <Badge variant={competition.competition_type === 'european' ? 'purple' : 'muted'} className="text-[9px] px-1 py-0 leading-4">
                             {competition.short_name}
                           </Badge>
                         )}
