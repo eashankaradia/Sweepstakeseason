@@ -60,10 +60,10 @@ export default function TeamsPage() {
     const competitionMap = new Map<string, { competition: any; teams: any[] }>()
     for (const row of (teamCompData ?? []) as any[]) {
       const comp = row.competitions
-      if (!comp || !comp.enabled) continue
+      if (!comp || !comp.enabled || comp.competition_type === 'domestic_cup') continue
       if (!competitionMap.has(comp.id)) competitionMap.set(comp.id, { competition: comp, teams: [] })
       const team = row.teams
-      if (!team) continue
+      if (!team || !assignMap.has(team.id)) continue
       const existing = competitionMap.get(comp.id)!
       if (!existing.teams.find((t: any) => t.id === team.id)) {
         existing.teams.push({
@@ -74,9 +74,9 @@ export default function TeamsPage() {
       }
     }
 
-    const comps = Array.from(competitionMap.values()).sort(
-      (a, b) => a.competition.display_order - b.competition.display_order
-    )
+    const comps = Array.from(competitionMap.values())
+      .filter(c => c.teams.length > 0)
+      .sort((a, b) => a.competition.display_order - b.competition.display_order)
 
     setSortedCompetitions(comps)
     setLoading(false)

@@ -36,7 +36,7 @@ export default function RulesPage() {
               <span className="text-base">✅</span>
               <div>
                 <p className="text-xs font-semibold text-emerald-400">Domestic leagues</p>
-                <p className="text-[10px] text-[var(--text-muted)]">Premier League, La Liga, Bundesliga, Serie A, etc.</p>
+                <p className="text-[10px] text-[var(--text-muted)]">Premier League</p>
               </div>
             </div>
             <div className="flex items-center gap-2.5 rounded-lg bg-[var(--bg)] border border-emerald-500/20 px-3 py-2">
@@ -44,13 +44,6 @@ export default function RulesPage() {
               <div>
                 <p className="text-xs font-semibold text-emerald-400">European competitions</p>
                 <p className="text-[10px] text-[var(--text-muted)]">Champions League, Europa League, Conference League</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg bg-[var(--bg)] border border-red-500/20 px-3 py-2">
-              <span className="text-base">❌</span>
-              <div>
-                <p className="text-xs font-semibold text-red-400">Domestic cups</p>
-                <p className="text-[10px] text-[var(--text-muted)]">FA Cup, League Cup, Copa del Rey, etc. — no points awarded</p>
               </div>
             </div>
           </div>
@@ -80,7 +73,7 @@ export default function RulesPage() {
               </div>
               <div className="px-3 pb-3 space-y-2">
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  Before a match kicks off, activate this on one of your clubs. The result for that specific game is amplified:
+                  Pick a calendar month and lock in Double or Nothing for one of your clubs. Every result that club gets in that month is amplified:
                 </p>
                 <div className="grid grid-cols-3 gap-1.5">
                   <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-center">
@@ -100,7 +93,7 @@ export default function RulesPage() {
                   </div>
                 </div>
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  Each club can only have D-o-N used on it once per season. You get one use per calendar month regardless of which club you pick.
+                  Each club can only have D-o-N used on it once per season. You get one month-boost per calendar month — pick your month wisely.
                 </p>
               </div>
             </div>
