@@ -20,9 +20,11 @@ export default function FixturesPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fixtures, setFixtures] = useState<FixtureRow[]>([])
   const [ownerMap, setOwnerMap] = useState<Map<string, Player[]>>(new Map())
+  const [myTeamIds, setMyTeamIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'results'>('upcoming')
   const [activeComp, setActiveComp] = useState('all')
+  const [myTeamsOnly, setMyTeamsOnly] = useState(false)
   const [compact, setCompact] = useState(true)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
 
@@ -39,7 +41,10 @@ export default function FixturesPage() {
     setLeague(lg)
     if (!lg) { setLoading(false); return }
 
-    const [{ data: comps }, { data: fix }, { data: assignments }, { data: lastSync }] = await Promise.all([
+    const { data: authData } = await supabase.auth.getUser()
+    const uid = authData?.user?.id
+
+    const [{ data: comps }, { data: fix }, { data: assignments }, { data: lastSync }, { data: players }] = await Promise.all([
       supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
       supabase.from('fixtures')
         .select(`*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
@@ -53,6 +58,9 @@ export default function FixturesPage() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      uid
+        ? supabase.from('players').select('id').eq('league_id', lg.id).eq('user_id', uid).maybeSingle()
+        : Promise.resolve({ data: null }),
     ])
 
     setCompetitions((comps ?? []).filter((c: any) => c.competition_type !== 'domestic_cup'))
@@ -68,6 +76,17 @@ export default function FixturesPage() {
       }
     }
     setOwnerMap(map)
+
+    // Find this player's team IDs
+    if ((players as any)?.id) {
+      const myPlayerId = (players as any).id
+      const myTeams = new Set<string>()
+      for (const a of (assignments ?? []) as any[]) {
+        if (a.players && a.players.id === myPlayerId) myTeams.add(a.team_id)
+      }
+      setMyTeamIds(myTeams)
+    }
+
     setLoading(false)
   }
 
@@ -76,8 +95,13 @@ export default function FixturesPage() {
       ? f.status === 'scheduled' || f.status === 'live' || (f.status as any) === 'postponed'
       : f.status === 'completed'
     const notCup = (f.competition as any)?.competition_type !== 'domestic_cup'
-    return statusOk && notCup && (activeComp === 'all' || f.competition_id === activeComp)
+    const compOk = activeComp === 'all' || f.competition_id === activeComp
+    const myTeamOk = !myTeamsOnly || myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id)
+    return statusOk && notCup && compOk && myTeamOk
   })
+
+  // Group fixtures by date
+  const groups = groupByDate(filtered, activeTab === 'results')
 
   if (loading) return <AppShell title="Fixtures"><PageLoader /></AppShell>
 
@@ -119,19 +143,26 @@ export default function FixturesPage() {
         </button>
       </div>
 
-      {/* Competition filter chips */}
-      {competitions.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-4 px-4 scrollbar-none">
-          <FilterChip active={activeComp === 'all'} onClick={() => setActiveComp('all')}>All</FilterChip>
-          {competitions.map(c => (
-            <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
-              {c.short_name}
+      {/* Filter row: competition chips + My Teams toggle */}
+      <div className="mb-3 space-y-2">
+        {(competitions.length > 0 || myTeamIds.size > 0) && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+            <FilterChip active={activeComp === 'all'} onClick={() => setActiveComp('all')}>All</FilterChip>
+            {competitions.map(c => (
+              <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
+                {c.short_name}
               </FilterChip>
-          ))}
-        </div>
-      )}
+            ))}
+            {myTeamIds.size > 0 && (
+              <FilterChip active={myTeamsOnly} onClick={() => setMyTeamsOnly(v => !v)}>
+                My Teams
+              </FilterChip>
+            )}
+          </div>
+        )}
+      </div>
 
-      {filtered.length === 0 ? (
+      {groups.length === 0 ? (
         <EmptyState
           icon={activeTab === 'upcoming' ? '📅' : '📊'}
           title={activeTab === 'upcoming' ? 'No upcoming fixtures' : 'No results yet'}
@@ -139,17 +170,45 @@ export default function FixturesPage() {
             ? 'Fixtures import automatically from ESPN.'
             : 'Results appear once matches are completed.'}
         />
-      ) : compact ? (
-        <div className="rounded-xl border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
-          {filtered.map(f => <CompactFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />)}
-        </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(f => <FixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />)}
+        <div className="space-y-4">
+          {groups.map(({ label, fixtures: groupFixtures }) => (
+            <div key={label}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">
+                {label}
+              </p>
+              {compact ? (
+                <div className="rounded-xl border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
+                  {groupFixtures.map(f => (
+                    <CompactFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} myTeamIds={myTeamIds} />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {groupFixtures.map(f => (
+                    <FixtureCard key={f.id} fixture={f} ownerMap={ownerMap} myTeamIds={myTeamIds} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </AppShell>
   )
+}
+
+function groupByDate(fixtures: FixtureRow[], reverseChron: boolean) {
+  const groups = new Map<string, FixtureRow[]>()
+  for (const f of fixtures) {
+    const date = f.kickoff_time
+      ? new Date(f.kickoff_time).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+      : 'Unknown date'
+    if (!groups.has(date)) groups.set(date, [])
+    groups.get(date)!.push(f)
+  }
+  const entries = [...groups.entries()].map(([label, fixtures]) => ({ label, fixtures }))
+  return reverseChron ? entries.reverse() : entries
 }
 
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -167,14 +226,16 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
-function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
+function CompactFixtureCard({ fixture, ownerMap, myTeamIds }: { fixture: FixtureRow; ownerMap: Map<string, any>; myTeamIds: Set<string> }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
   const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
+  const isMine = myTeamIds.has(fixture.home_team_id) || myTeamIds.has(fixture.away_team_id)
+
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block">
-      <div className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/5 transition-colors">
+      <div className={`flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/5 transition-colors ${isMine ? 'bg-[var(--accent)]/3' : ''}`}>
         <Badge
           variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
           className="text-[9px] shrink-0 min-w-[28px] text-center"
@@ -218,26 +279,28 @@ function CompactFixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerM
           </div>
         </div>
 
-        {!isCompleted && fixture.kickoff_time && (
-          <span className="text-[9px] text-[var(--text-muted)] shrink-0">
-            {new Date(fixture.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-          </span>
+        {isMine && (
+          <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
         )}
       </div>
     </Link>
   )
 }
 
-function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map<string, any> }) {
+function FixtureCard({ fixture, ownerMap, myTeamIds }: { fixture: FixtureRow; ownerMap: Map<string, any>; myTeamIds: Set<string> }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
   const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
+  const isMine = myTeamIds.has(fixture.home_team_id) || myTeamIds.has(fixture.away_team_id)
 
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors">
+      <div
+        className="rounded-xl border bg-[var(--bg-card)] overflow-hidden hover:border-[var(--accent)]/40 transition-colors"
+        style={{ borderColor: isMine ? 'color-mix(in srgb, var(--accent) 40%, var(--border))' : 'var(--border)' }}
+      >
         <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[10px] text-[var(--text-muted)]">
           <Badge
             variant={(fixture.competition as any)?.competition_type === 'european' ? 'purple' : 'default'}
@@ -249,6 +312,7 @@ function FixtureCard({ fixture, ownerMap }: { fixture: FixtureRow; ownerMap: Map
           {fixture.matchday && <span>MD{fixture.matchday}</span>}
           {isLive && <Badge variant="danger" className="text-[9px] ml-1">● LIVE</Badge>}
           {(fixture.status as any) === 'postponed' && <Badge variant="warning" className="text-[9px] ml-1">PPD</Badge>}
+          {isMine && <Badge variant="info" className="text-[9px] ml-1">My team</Badge>}
           <span className="ml-auto">{fixture.kickoff_time ? formatDateTime(fixture.kickoff_time) : '—'}</span>
         </div>
 

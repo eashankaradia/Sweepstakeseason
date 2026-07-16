@@ -104,6 +104,25 @@ export default function MyTeamsPage() {
     setLoading(false)
   }
 
+  async function cancelDoubleOrNothing(teamId: string, month: string) {
+    const supabase = createClient()
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId || !myPlayerId) return
+    setActivating(teamId)
+    await supabase
+      .from('power_up_activations')
+      .delete()
+      .eq('league_id', leagueId)
+      .eq('player_id', myPlayerId)
+      .eq('team_id', teamId)
+      .eq('season_month', month)
+      .eq('status', 'pending')
+    setActivating(null)
+    setSuccessMsg('D-o-N cancelled.')
+    setTimeout(() => setSuccessMsg(''), 3000)
+    loadData()
+  }
+
   async function activateDoubleOrNothing(teamId: string, fixtureIds: string[], month: string) {
     const supabase = createClient()
     const leagueId = getLeagueIdCookie()
@@ -186,6 +205,7 @@ export default function MyTeamsPage() {
             donMonth={donMonth}
             setDonMonth={setDonMonth}
             onActivate={activateDoubleOrNothing}
+            onCancel={cancelDoubleOrNothing}
           />
         ) : (
           <EmptyState icon="👤" title="Not in this league" description="You don't have a player slot in this league yet." />
@@ -211,6 +231,7 @@ function MineView({
   donMonth,
   setDonMonth,
   onActivate,
+  onCancel,
 }: {
   entry: any
   powerUps: any[]
@@ -223,6 +244,7 @@ function MineView({
   donMonth: string
   setDonMonth: (m: string) => void
   onActivate: (teamId: string, fixtureIds: string[], month: string) => void
+  onCancel: (teamId: string, month: string) => void
 }) {
   const { player, teams, total } = entry
 
@@ -357,11 +379,21 @@ function MineView({
               {/* D-o-N footer */}
               <div className="border-t border-[var(--border)]">
                 {pendingForTeam.length > 0 ? (
-                  <div className="px-3 py-2 space-y-1">
-                    {pendingForTeam.map((p: any) => (
-                      <div key={p.id} className="flex items-center gap-1.5 text-[10px] text-[var(--accent)]">
+                  <div className="px-3 py-2 space-y-1.5">
+                    {/* Dedupe by season_month */}
+                    {[...new Set(pendingForTeam.map((p: any) => p.season_month))].map((month: any) => (
+                      <div key={month} className="flex items-center gap-2">
                         <span>⚡</span>
-                        <span className="font-semibold">D-o-N active · {formatMonth(p.season_month)}</span>
+                        <span className="text-[10px] font-semibold text-[var(--accent)] flex-1">
+                          D-o-N active · {formatMonth(month)}
+                        </span>
+                        <button
+                          onClick={() => onCancel(team.id, month)}
+                          disabled={activating === team.id}
+                          className="text-[9px] text-red-400 border border-red-400/30 px-2 py-0.5 rounded-full hover:bg-red-400/10 transition-colors disabled:opacity-40"
+                        >
+                          {activating === team.id ? '…' : 'Cancel'}
+                        </button>
                       </div>
                     ))}
                   </div>

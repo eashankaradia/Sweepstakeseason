@@ -24,6 +24,8 @@ export default function DashboardPage() {
   const [weekFixtures, setWeekFixtures] = useState<any[]>([])
   const [nextMyMatch, setNextMyMatch] = useState<any>(null)
   const [myClubsToday, setMyClubsToday] = useState(0)
+  const [myPowerUps, setMyPowerUps] = useState<any[]>([])
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myUserId, setMyUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -165,6 +167,7 @@ export default function DashboardPage() {
     if (uid) {
       const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
       if (myPlayer) {
+        setMyPlayerId(myPlayer.id)
         const myTeamIds = new Set(
           ((assignments ?? []) as any[]).filter(a => a.player_id === myPlayer.id).map(a => a.team_id)
         )
@@ -181,6 +184,21 @@ export default function DashboardPage() {
           .filter((f: any) => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
           .sort((a: any, b: any) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime())
         setNextMyMatch(allUpcoming[0] ?? null)
+
+        // Fetch pending power-ups for my clubs playing today/live
+        const todayFixIds = [...(live ?? []), ...(todayFix ?? [])].map((f: any) => f.id)
+        if (todayFixIds.length > 0) {
+          const { data: pups } = await supabase
+            .from('power_up_activations')
+            .select('*')
+            .eq('league_id', lg.id)
+            .eq('player_id', myPlayer.id)
+            .eq('status', 'pending')
+            .in('fixture_id', todayFixIds)
+          setMyPowerUps(pups ?? [])
+        } else {
+          setMyPowerUps([])
+        }
       }
     }
 
@@ -238,6 +256,16 @@ export default function DashboardPage() {
   const myPos = myEntry ? standings.indexOf(myEntry) + 1 : null
   const hasDraft = standings.some((s: any) => s.teamCount > 0)
 
+  // Compute my team IDs for Today's Stakes
+  const myTeamIdsForStakes = myEntry
+    ? new Set([...ownerMap.entries()].filter(([, p]) => p.id === myEntry.player.id).map(([id]) => id))
+    : new Set<string>()
+  const stakesFixtures = myTeamIdsForStakes.size > 0
+    ? [...liveFixtures, ...todayFixtures].filter(
+        (f: any) => myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id)
+      )
+    : []
+
   const weekFixtureCount = weekFixtures.length + todayFixtures.length + liveFixtures.length
 
   return (
@@ -291,6 +319,70 @@ export default function DashboardPage() {
             {liveFixtures.map(f => (
               <LiveFixtureCard key={f.id} fixture={f} ownerMap={ownerMap} />
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Today's Stakes */}
+      {stakesFixtures.length > 0 && myEntry && (
+        <section className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-sm text-[var(--text-primary)]">Today's Stakes</h2>
+            <Link href="/fixtures" className="text-xs text-[var(--accent)]">All →</Link>
+          </div>
+          <div className="space-y-2">
+            {stakesFixtures.map((f: any) => {
+              const isMyHome = myTeamIdsForStakes.has(f.home_team_id)
+              const myTeam = isMyHome ? f.home_team : f.away_team
+              const opp = isMyHome ? f.away_team : f.home_team
+              const donActive = myPowerUps.some((p: any) => p.fixture_id === f.id && p.power_up_type === 'double_or_nothing')
+              const isLive = f.status === 'live'
+              return (
+                <Link key={f.id} href={`/fixtures/${f.id}`}>
+                  <div className={`rounded-xl border p-3 transition-colors ${
+                    isLive
+                      ? 'border-red-500/40 bg-red-500/5'
+                      : 'border-[var(--accent)]/30 bg-[var(--accent)]/5 hover:bg-[var(--accent)]/8'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <TeamCrest team={myTeam} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-semibold text-[var(--text-primary)]">
+                            {myTeam?.short_name || myTeam?.name}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            {isMyHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
+                          </span>
+                          {isLive && (
+                            <span className="text-[9px] font-bold text-red-400 animate-pulse">● LIVE</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {donActive && (
+                            <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full">
+                              ⚡ D-o-N active
+                            </span>
+                          )}
+                          {f.kickoff_time && !isLive && (
+                            <span className="text-[9px] text-[var(--text-muted)]">
+                              {new Date(f.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                              {' · '}{formatCountdown(f.kickoff_time)}
+                            </span>
+                          )}
+                          {isLive && (
+                            <span className="text-sm font-black text-[var(--text-primary)]">
+                              {f.home_score}–{f.away_score}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <TeamCrest team={opp} size="xs" />
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         </section>
       )}
