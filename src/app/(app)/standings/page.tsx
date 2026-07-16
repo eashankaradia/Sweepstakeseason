@@ -794,16 +794,16 @@ function HeatmapView({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-0.5">
+      <div className="flex flex-wrap gap-x-3 gap-y-2 px-0.5 mb-1">
         {players.map(p => {
           const isMe = myPlayer ? p.id === myPlayer.id : false
           return (
             <div key={p.id} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+              <Avatar name={p.name} color={p.color} size="xs" />
               <span className={`text-[10px] ${isMe ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
                 {p.name}
+                {isMe && <span className="ml-1 text-[9px] font-bold" style={{ color: p.color }}>You</span>}
               </span>
-              {isMe && <span className="text-[9px] font-bold" style={{ color: p.color }}>You</span>}
             </div>
           )
         })}
@@ -861,7 +861,7 @@ function HeatmapView({
                   {owners.length > 0 ? (
                     <div className="flex items-center gap-0.5 flex-wrap justify-center mt-0.5">
                       {owners.map(owner => (
-                        <div key={owner.id} className="w-2 h-2 rounded-full shrink-0 ring-1 ring-[var(--bg-card)]" style={{ backgroundColor: owner.color }} />
+                        <Avatar key={owner.id} name={owner.name} color={owner.color} size="xs" />
                       ))}
                     </div>
                   ) : (

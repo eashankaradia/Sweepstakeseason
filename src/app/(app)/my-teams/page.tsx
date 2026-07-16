@@ -48,7 +48,7 @@ export default function MyTeamsPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'mine' | 'all'>('mine')
+  const [tab, setTab] = useState<'mine' | 'all' | 'calendar'>('mine')
   const [donTeamId, setDonTeamId] = useState<string | null>(null)
   const [donMonth, setDonMonth] = useState<string>('')
 
@@ -254,7 +254,7 @@ export default function MyTeamsPage() {
       )}
 
       <TabBar
-        tabs={[{ key: 'mine', label: 'Mine' }, { key: 'all', label: 'All Players' }]}
+        tabs={[{ key: 'mine', label: 'Mine' }, { key: 'all', label: 'All Players' }, { key: 'calendar', label: 'Calendar' }]}
         active={tab}
         onChange={v => setTab(v as any)}
         className="mb-4"
@@ -289,6 +289,15 @@ export default function MyTeamsPage() {
 
       {tab === 'all' && (
         <AllPlayersView playerEntries={playerEntries} myUserId={myUserId} />
+      )}
+
+      {tab === 'calendar' && (
+        <MyTeamsCalendarView
+          upcomingFixtures={upcomingFixtures}
+          myTeamIds={myTeamIds}
+          powerUps={powerUps}
+          usedMonths={usedMonths}
+        />
       )}
     </AppShell>
   )
@@ -1039,6 +1048,180 @@ function PowerUpTiles({
           <p className="text-[10px] text-[var(--text-muted)]">No activation needed — the bigger the upset, the bigger the bonus.</p>
         </div>
       )}
+    </div>
+  )
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function MyTeamsCalendarView({
+  upcomingFixtures,
+  myTeamIds,
+  powerUps,
+  usedMonths,
+}: {
+  upcomingFixtures: any[]
+  myTeamIds: Set<string>
+  powerUps: any[]
+  usedMonths: Set<string>
+}) {
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  })
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+
+  const fixtureMap = new Map<string, any[]>()
+  for (const f of upcomingFixtures) {
+    if (!f.kickoff_time) continue
+    const key = toDateKey(new Date(f.kickoff_time))
+    const arr = fixtureMap.get(key) ?? []
+    arr.push(f)
+    fixtureMap.set(key, arr)
+  }
+
+  const today = new Date()
+  const todayKey = toDateKey(today)
+  const displayDay = selectedDay ?? todayKey
+  const displayFixtures = fixtureMap.get(displayDay) ?? []
+
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const startDow = (firstDay.getDay() + 6) % 7
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const monthYM = `${year}-${String(month + 1).padStart(2, '0')}`
+  const isDonUsed = usedMonths.has(monthYM)
+  const isDonActive = powerUps.some(p => p.power_up_type === 'double_or_nothing' && p.season_month === monthYM && p.status === 'pending')
+
+  const monthLabel = calMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  const prevMonth = () => setCalMonth(m => { const d = new Date(m); d.setMonth(d.getMonth() - 1); return d })
+  const nextMonth = () => setCalMonth(m => { const d = new Date(m); d.setMonth(d.getMonth() + 1); return d })
+
+  const displayDayLabel = (() => {
+    const d = new Date(displayDay + 'T12:00:00')
+    if (displayDay === todayKey) return 'Today'
+    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+  })()
+
+  return (
+    <div>
+      {/* Month header + D-o-N status */}
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Previous month">‹</button>
+        <div className="flex flex-col items-center gap-1">
+          <span className="text-sm font-semibold text-[var(--text-primary)]">{monthLabel}</span>
+          {isDonActive ? (
+            <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">⚡ D-o-N active</span>
+          ) : isDonUsed ? (
+            <span className="text-[9px] text-[var(--text-muted)] bg-[var(--bg)] px-2 py-0.5 rounded-full border border-[var(--border)]">⚡ D-o-N used</span>
+          ) : (
+            <span className="text-[9px] font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">⚡ D-o-N available</span>
+          )}
+        </div>
+        <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Next month">›</button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <div key={i} className="text-center text-[10px] text-[var(--text-muted)] font-medium py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Month grid */}
+      <div className="grid grid-cols-7 gap-0.5 mb-4">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />
+          const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const dayFixtures = fixtureMap.get(key) ?? []
+          const myFixtures = dayFixtures.filter(f => myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id))
+          const isToday = key === todayKey
+          const isSelected = key === displayDay
+          const hasMine = myFixtures.length > 0
+          const hasAny = dayFixtures.length > 0
+
+          return (
+            <button
+              key={key}
+              onClick={() => setSelectedDay(key === displayDay ? null : key)}
+              className={`w-full aspect-square flex flex-col items-center justify-start pt-0.5 rounded-lg text-[11px] font-semibold transition-all relative ${
+                isSelected
+                  ? 'bg-[var(--accent)] text-white'
+                  : isToday
+                    ? 'bg-[var(--accent)]/15 text-[var(--accent)] ring-1 ring-[var(--accent)]/40'
+                    : hasAny
+                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                      : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)]/50'
+              }`}
+            >
+              <span>{day}</span>
+              {(hasMine || hasAny) && (
+                <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center px-0.5">
+                  {hasMine && Array.from({ length: Math.min(myFixtures.length, 3) }).map((_, di) => (
+                    <div key={di} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-[var(--accent)]'}`} />
+                  ))}
+                  {dayFixtures.length > myFixtures.length && !hasMine && (
+                    <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white/60' : 'bg-[var(--border)]'}`} />
+                  )}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Selected day fixtures */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-0.5">{displayDayLabel}</p>
+        {displayFixtures.length === 0 ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-4 text-center">
+            <p className="text-xs text-[var(--text-muted)]">No fixtures</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+            {displayFixtures.map((f: any, i: number) => {
+              const isMine = myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id)
+              const comp = f.competition
+              return (
+                <Link key={f.id} href={`/fixtures/${f.id}`}>
+                  <div className={[
+                    'flex items-center gap-3 px-3 py-2.5 min-h-[52px] transition-colors hover:bg-[var(--bg-card-hover)]',
+                    i > 0 ? 'border-t border-[var(--border)]' : '',
+                    isMine ? 'border-l-2 border-l-[var(--accent)]' : '',
+                  ].join(' ')}>
+                    {comp && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border leading-none shrink-0 ${comp.competition_type === 'european' ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' : comp.competition_type === 'domestic_cup' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]/30'}`}>
+                        {comp.short_name}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <TeamCrest team={f.home_team} size="xs" />
+                      <span className="text-[10px] text-[var(--text-muted)] shrink-0">
+                        {f.kickoff_time ? new Date(f.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'TBC'}
+                      </span>
+                      <TeamCrest team={f.away_team} size="xs" />
+                    </div>
+                    <div className="text-[10px] text-[var(--text-secondary)] shrink-0 truncate text-right max-w-[90px]">
+                      {f.home_team?.short_name || f.home_team?.name} v {f.away_team?.short_name || f.away_team?.name}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
