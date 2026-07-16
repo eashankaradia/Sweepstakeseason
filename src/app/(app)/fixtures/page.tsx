@@ -22,7 +22,7 @@ export default function FixturesPage() {
   const [ownerMap, setOwnerMap] = useState<Map<string, Player[]>>(new Map())
   const [myTeamIds, setMyTeamIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'results'>('upcoming')
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'results' | 'calendar'>('upcoming')
   const [activeComp, setActiveComp] = useState('all')
   const [myTeamsOnly, setMyTeamsOnly] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
@@ -101,66 +101,72 @@ export default function FixturesPage() {
   return (
     <AppShell title="Fixtures">
       <TabBar
-        tabs={[{ key: 'upcoming', label: 'Upcoming' }, { key: 'results', label: 'Results' }]}
+        tabs={[{ key: 'upcoming', label: 'Upcoming' }, { key: 'results', label: 'Results' }, { key: 'calendar', label: 'Calendar' }]}
         active={activeTab}
         onChange={v => setActiveTab(v as any)}
         className="mb-3"
       />
 
-      {/* Filter chips row */}
-      {(competitions.length > 0 || myTeamIds.size > 0) && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4 scrollbar-none">
-          <FilterChip active={activeComp === 'all'} onClick={() => setActiveComp('all')}>All</FilterChip>
-          {competitions.map(c => (
-            <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
-              {(c as any).short_name || c.name}
-            </FilterChip>
-          ))}
-          {myTeamIds.size > 0 && (
-            <FilterChip active={myTeamsOnly} onClick={() => setMyTeamsOnly(v => !v)}>My Teams</FilterChip>
-          )}
-        </div>
-      )}
-
-      {/* Sync timestamp */}
-      {lastSyncedAt && (
-        <p className="text-[10px] text-[var(--text-muted)] mb-3">
-          Synced {formatRelativeTime(lastSyncedAt)}
-        </p>
-      )}
-
-      {groups.length === 0 ? (
-        <EmptyState
-          icon={activeTab === 'upcoming' ? '📅' : '📊'}
-          title={activeTab === 'upcoming' ? 'No upcoming fixtures' : 'No results yet'}
-          description={activeTab === 'upcoming'
-            ? 'Fixtures import automatically from ESPN.'
-            : 'Results appear once matches are completed.'}
-        />
+      {activeTab === 'calendar' ? (
+        <CalendarView fixtures={fixtures} ownerMap={ownerMap} myTeamIds={myTeamIds} />
       ) : (
-        <div className="space-y-5">
-          {groups.map(({ label, fixtures: groupFixtures }) => (
-            <div key={label}>
-              {/* Date header */}
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1.5 px-1">
-                {label}
-              </p>
-
-              {/* Fixture rows */}
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-                {groupFixtures.map((f, i) => (
-                  <FixtureRow
-                    key={f.id}
-                    fixture={f}
-                    ownerMap={ownerMap}
-                    myTeamIds={myTeamIds}
-                    divider={i < groupFixtures.length - 1}
-                  />
-                ))}
-              </div>
+        <>
+          {/* Filter chips row */}
+          {(competitions.length > 0 || myTeamIds.size > 0) && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4 scrollbar-none">
+              <FilterChip active={activeComp === 'all'} onClick={() => setActiveComp('all')}>All</FilterChip>
+              {competitions.map(c => (
+                <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
+                  {(c as any).short_name || c.name}
+                </FilterChip>
+              ))}
+              {myTeamIds.size > 0 && (
+                <FilterChip active={myTeamsOnly} onClick={() => setMyTeamsOnly(v => !v)}>My Teams</FilterChip>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* Sync timestamp */}
+          {lastSyncedAt && (
+            <p className="text-[10px] text-[var(--text-muted)] mb-3">
+              Synced {formatRelativeTime(lastSyncedAt)}
+            </p>
+          )}
+
+          {groups.length === 0 ? (
+            <EmptyState
+              icon={activeTab === 'upcoming' ? '📅' : '📊'}
+              title={activeTab === 'upcoming' ? 'No upcoming fixtures' : 'No results yet'}
+              description={activeTab === 'upcoming'
+                ? 'Fixtures import automatically from ESPN.'
+                : 'Results appear once matches are completed.'}
+            />
+          ) : (
+            <div className="space-y-5">
+              {groups.map(({ label, fixtures: groupFixtures }) => (
+                <div key={label}>
+                  {/* Date header */}
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1.5 px-1">
+                    {label}
+                  </p>
+
+                  {/* Fixture rows */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+                    {groupFixtures.map((f, i) => (
+                      <FixtureRow
+                        key={f.id}
+                        fixture={f}
+                        ownerMap={ownerMap}
+                        myTeamIds={myTeamIds}
+                        divider={i < groupFixtures.length - 1}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </AppShell>
   )
@@ -286,4 +292,177 @@ function formatRelativeTime(dateStr: string): string {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
   return `${Math.floor(hrs / 24)}d ago`
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function CalendarView({
+  fixtures,
+  ownerMap,
+  myTeamIds,
+}: {
+  fixtures: FixtureRow[]
+  ownerMap: Map<string, Player[]>
+  myTeamIds: Set<string>
+}) {
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  })
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+
+  // Build fixture map: YYYY-MM-DD → FixtureRow[]
+  const fixtureMap = new Map<string, FixtureRow[]>()
+  for (const f of fixtures) {
+    if (!f.kickoff_time) continue
+    const d = new Date(f.kickoff_time)
+    const key = toDateKey(d)
+    const arr = fixtureMap.get(key) ?? []
+    arr.push(f)
+    fixtureMap.set(key, arr)
+  }
+
+  const today = new Date()
+  const todayKey = toDateKey(today)
+  const displayDay = selectedDay ?? todayKey
+  const displayFixtures = fixtureMap.get(displayDay) ?? []
+
+  // Build month grid
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  // Monday-first: map Sun(0)→6, Mon(1)→0, …, Sat(6)→5
+  const startDow = (firstDay.getDay() + 6) % 7
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const monthLabel = calMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  const prevMonth = () =>
+    setCalMonth(m => {
+      const d = new Date(m)
+      d.setMonth(d.getMonth() - 1)
+      return d
+    })
+  const nextMonth = () =>
+    setCalMonth(m => {
+      const d = new Date(m)
+      d.setMonth(d.getMonth() + 1)
+      return d
+    })
+
+  return (
+    <div>
+      {/* Month navigator */}
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={prevMonth}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          aria-label="Previous month"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-semibold text-[var(--text-primary)]">{monthLabel}</span>
+        <button
+          onClick={nextMonth}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          aria-label="Next month"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Day-of-week headers (Mon–Sun) */}
+      <div className="grid grid-cols-7 mb-1">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <div key={i} className="text-center text-[10px] text-[var(--text-muted)] font-medium py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Month grid */}
+      <div className="grid grid-cols-7 gap-0.5 mb-4">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />
+          const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const dayFixtures = fixtureMap.get(key) ?? []
+          const isToday = key === todayKey
+          const isSelected = key === displayDay
+          const dotsToShow = dayFixtures.slice(0, 3)
+
+          return (
+            <button
+              key={i}
+              onClick={() => setSelectedDay(key)}
+              className={[
+                'w-full aspect-square flex flex-col items-center justify-center rounded-lg transition-colors',
+                isSelected
+                  ? 'bg-[var(--accent)] text-white'
+                  : isToday
+                    ? 'border border-[var(--accent)] text-[var(--accent)]'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--border)]/40',
+              ].join(' ')}
+            >
+              <span className="text-[11px] leading-none">{day}</span>
+              {dotsToShow.length > 0 && (
+                <div className="flex gap-0.5 mt-0.5">
+                  {dotsToShow.map((f, di) => {
+                    const isMine = myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id)
+                    return (
+                      <span
+                        key={di}
+                        className="w-1 h-1 rounded-full inline-block"
+                        style={{
+                          backgroundColor: isMine
+                            ? isSelected ? 'rgba(255,255,255,0.9)' : 'var(--accent)'
+                            : isSelected ? 'rgba(255,255,255,0.45)' : 'var(--border)',
+                        }}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Selected day's fixtures */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1.5 px-1">
+          {displayDay === todayKey
+            ? 'Today'
+            : new Date(displayDay + 'T12:00:00').toLocaleDateString('en-GB', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'short',
+              })}
+        </p>
+        {displayFixtures.length > 0 ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+            {displayFixtures.map((f, i) => (
+              <FixtureRow
+                key={f.id}
+                fixture={f}
+                ownerMap={ownerMap}
+                myTeamIds={myTeamIds}
+                divider={i < displayFixtures.length - 1}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-center py-6 text-[var(--text-muted)] text-sm">No fixtures on this day</p>
+        )}
+      </div>
+    </div>
+  )
 }

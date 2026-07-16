@@ -267,6 +267,17 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         )}
       </div>
 
+      {/* Giant Killer Banner (upcoming/live only) */}
+      {!isCompleted && (
+        <GiantKillerBanner
+          homeTeam={fixture.home_team}
+          awayTeam={fixture.away_team}
+          homeOwners={homeOwner}
+          awayOwners={awayOwner}
+          allPlayerScores={allPlayerScores}
+        />
+      )}
+
       {/* Sweepstake Impact card */}
       {myPlayerId && (() => {
         const iMineHome = homeOwner.some(o => o.id === myPlayerId)
@@ -581,6 +592,40 @@ function MatchStats({ stats, homeName, awayName }: { stats: any[]; homeName: str
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function GiantKillerBanner({
+  homeTeam,
+  awayTeam,
+  homeOwners,
+  awayOwners,
+  allPlayerScores,
+}: {
+  homeTeam: any
+  awayTeam: any
+  homeOwners: Player[]
+  awayOwners: Player[]
+  allPlayerScores: Map<string, number>
+}) {
+  if (homeOwners.length === 0 || awayOwners.length === 0) return null
+
+  const homeTotal = homeOwners.reduce((sum, o) => sum + (allPlayerScores.get(o.id) ?? 0), 0)
+  const awayTotal = awayOwners.reduce((sum, o) => sum + (allPlayerScores.get(o.id) ?? 0), 0)
+  const gap = Math.abs(homeTotal - awayTotal)
+  if (gap < 5) return null
+
+  const underdogTeam = homeTotal < awayTotal ? homeTeam : awayTeam
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 mb-3">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">⚔️</span>
+        <p className="text-xs font-semibold text-amber-400">
+          Giant Killer opportunity — {underdogTeam?.short_name || underdogTeam?.name} win earns +3 bonus points
+        </p>
       </div>
     </div>
   )
