@@ -30,6 +30,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
   const [powerUps, setPowerUps] = useState<any[]>([])
   const [allOwners, setAllOwners] = useState<Map<string, Player>>(new Map())
   const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [liveLoading, setLiveLoading] = useState(false)
   const supabase = createClient()
@@ -48,6 +49,9 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     if (!fix) { setLoading(false); return }
     setFixture(fix)
 
+    const { data: authData } = await supabase.auth.getUser()
+    const uid = authData?.user?.id
+
     const [{ data: assignments }, { data: pups }, { data: players }, { data: playerScores }] = await Promise.all([
       supabase.from('player_team_assignments')
         .select('team_id, players(id,name,color)')
@@ -56,9 +60,14 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         .select('*, players(name,color)')
         .eq('fixture_id', params.id)
         .eq('status', 'pending'),
-      supabase.from('players').select('id,name,color').eq('league_id', fix.league_id),
+      supabase.from('players').select('id,name,color,user_id').eq('league_id', fix.league_id),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', fix.league_id),
     ])
+
+    if (uid) {
+      const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
+      setMyPlayerId(myPlayer?.id ?? null)
+    }
 
     const aMap = new Map<string, Player[]>()
     for (const a of (assignments ?? []) as any[]) {
@@ -257,6 +266,25 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
           </div>
         )}
       </div>
+
+      {/* Sweepstake Impact card */}
+      {myPlayerId && (() => {
+        const iMineHome = homeOwner.some(o => o.id === myPlayerId)
+        const iMineAway = awayOwner.some(o => o.id === myPlayerId)
+        if (!iMineHome && !iMineAway) return null
+        const myTeam = iMineHome ? fixture.home_team : fixture.away_team
+        const don = iMineHome ? homeDon : awayDon
+        const myCurrentPts = allPlayerScores.get(myPlayerId) ?? 0
+        return (
+          <SweepstakeImpactCard
+            myTeam={myTeam}
+            don={don}
+            myCurrentPts={myCurrentPts}
+            isLive={isLive}
+            isCompleted={isCompleted}
+          />
+        )
+      })()}
 
       {/* Odds (upcoming only) */}
       {isUpcoming && hasOdds && (
@@ -595,6 +623,58 @@ function GiantKillerCheck({
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function SweepstakeImpactCard({
+  myTeam, don, myCurrentPts, isLive, isCompleted,
+}: {
+  myTeam: any
+  don: any
+  myCurrentPts: number
+  isLive: boolean
+  isCompleted: boolean
+}) {
+  const scenarios = [
+    { label: 'Win', raw: 3, color: 'emerald' },
+    { label: 'Draw', raw: 1, color: 'amber' },
+    { label: 'Loss', raw: 0, color: 'red' },
+  ]
+  const donActive = !!don
+
+  return (
+    <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 mb-3">
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="text-sm">🎯</span>
+        <p className="text-xs font-bold text-[var(--text-primary)]">Your Stake — {myTeam?.short_name || myTeam?.name}</p>
+        {donActive && (
+          <span className="ml-auto text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full">⚡ D-o-N active</span>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {scenarios.map(({ label, raw, color }) => {
+          const pts = projectedPtsWithDon(raw, don)
+          const bg = color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/20' : color === 'amber' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'
+          const textColor = color === 'emerald' ? 'text-emerald-400' : color === 'amber' ? 'text-amber-400' : 'text-red-400'
+          return (
+            <div key={label} className={`rounded-lg border p-2 text-center ${bg}`}>
+              <p className={`text-[10px] font-medium ${textColor}`}>{label}</p>
+              <p className={`text-sm font-black mt-0.5 ${textColor}`}>
+                {pts > 0 ? '+' : ''}{pts} pts
+              </p>
+              {donActive && raw !== pts && (
+                <p className="text-[9px] text-[var(--text-muted)] mt-0.5">(base: {raw > 0 ? '+' : ''}{raw})</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {!isCompleted && !isLive && (
+        <p className="text-[9px] text-[var(--text-muted)] mt-2 text-center">
+          Currently {myCurrentPts} pts in the sweepstake
+        </p>
+      )}
+    </div>
+  )
+}
 
 function projectedPtsWithDon(rawPts: number, don: any | undefined): number {
   if (!don) return rawPts
