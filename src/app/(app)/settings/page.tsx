@@ -17,6 +17,7 @@ const adminSections = [
 ]
 
 const userSections = [
+  { href: '/settings/account', icon: '🔑', label: 'Account', description: 'Change your password' },
   { href: '/rules', icon: '📖', label: 'How it works', description: 'Scoring, power-ups, and competition rules' },
 ]
 

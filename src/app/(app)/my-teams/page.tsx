@@ -15,6 +15,12 @@ function formatMonth(ym: string) {
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
+function posOrdinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return s[(v - 20) % 10] ?? s[v] ?? s[0]
+}
+
 export default function MyTeamsPage() {
   const [data, setData] = useState<any>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -175,6 +181,7 @@ export default function MyTeamsPage() {
   const usedTeamIds = new Set(powerUps.filter((p: any) => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled').map((p: any) => p.team_id))
 
   const myEntry = playerEntries.find((e: any) => e.isMe)
+  const myPosition = myEntry ? playerEntries.indexOf(myEntry) + 1 : null
 
   return (
     <AppShell title="My Teams">
@@ -195,6 +202,8 @@ export default function MyTeamsPage() {
         myEntry ? (
           <MineView
             entry={myEntry}
+            position={myPosition}
+            totalPlayers={playerEntries.length}
             powerUps={powerUps}
             usedMonths={usedMonths}
             usedTeamIds={usedTeamIds}
@@ -221,6 +230,8 @@ export default function MyTeamsPage() {
 
 function MineView({
   entry,
+  position,
+  totalPlayers,
   powerUps,
   usedMonths,
   usedTeamIds,
@@ -234,6 +245,8 @@ function MineView({
   onCancel,
 }: {
   entry: any
+  position: number | null
+  totalPlayers: number
   powerUps: any[]
   usedMonths: Set<string>
   usedTeamIds: Set<string>
@@ -247,6 +260,7 @@ function MineView({
   onCancel: (teamId: string, month: string) => void
 }) {
   const { player, teams, total } = entry
+  const medals = ['🥇', '🥈', '🥉']
 
   const totalW = teams.reduce((s: number, t: any) => s + (t.score?.wins ?? 0), 0)
   const totalD = teams.reduce((s: number, t: any) => s + (t.score?.draws ?? 0), 0)
@@ -284,10 +298,30 @@ function MineView({
         style={{ borderColor: `${player.color}40`, backgroundColor: `${player.color}08` }}
       >
         <div className="flex items-center gap-3 mb-4">
-          <Avatar name={player.name} color={player.color} size="lg" />
+          <div className="relative shrink-0">
+            <Avatar name={player.name} color={player.color} size="lg" />
+            {position != null && position <= 3 && (
+              <span className="absolute -top-1 -right-1 text-base leading-none">{medals[position - 1]}</span>
+            )}
+            {position != null && position > 3 && (
+              <div
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[var(--bg)]"
+                style={{ backgroundColor: player.color, color: '#fff' }}
+              >
+                {position}
+              </div>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-base text-[var(--text-primary)]">{player.name}</p>
-            <p className="text-xs text-[var(--text-secondary)]">{teams.length} clubs in your squad</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              {position != null && (
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {position}{posOrdinal(position)} of {totalPlayers}
+                </span>
+              )}
+              <span className="text-[10px] text-[var(--text-muted)]">· {teams.length} clubs</span>
+            </div>
           </div>
           <div className="text-right">
             <p className="font-black text-3xl" style={{ color: player.color }}>{total}</p>

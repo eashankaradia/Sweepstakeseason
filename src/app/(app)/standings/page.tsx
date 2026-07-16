@@ -231,7 +231,7 @@ export default function StandingsPage() {
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
             <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-              <div className="grid grid-cols-[28px_1fr_28px_28px_28px_40px_44px] items-center gap-1 px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
+              <div className="sticky top-14 z-10 grid grid-cols-[28px_1fr_28px_28px_28px_40px_44px] items-center gap-1 px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
                 <span className="text-[10px] text-[var(--text-muted)] font-medium text-center">#</span>
                 <span className="text-[10px] text-[var(--text-muted)] font-medium">Player</span>
                 <span className="text-[10px] text-[var(--text-muted)] font-medium text-center">W</span>
@@ -362,16 +362,26 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
     return <EmptyState icon="📅" title="No monthly data yet" description="Monthly breakdowns appear once match results come in." />
   }
 
+  const currentMonth = new Date().toISOString().substring(0, 7)
+  // Show most recent month first
+  const sortedGroups = [...groups].sort((a, b) => b.month.localeCompare(a.month))
+
   return (
     <div className="space-y-4">
-      {groups.map(({ month, rows }) => {
+      {sortedGroups.map(({ month, rows }) => {
         const label = new Date(month + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
         const winner = rows[0]
         const last = rows[rows.length - 1]
+        const isCurrent = month === currentMonth
         return (
-          <div key={month} className="rounded-xl border border-[var(--border)] overflow-hidden">
-            <div className="px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)] flex items-center justify-between">
-              <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
+          <div key={month} className={`rounded-xl border overflow-hidden ${isCurrent ? 'border-[var(--accent)]/40' : 'border-[var(--border)]'}`}>
+            <div className={`px-3 py-2 border-b flex items-center justify-between ${isCurrent ? 'bg-[var(--accent)]/8 border-[var(--accent)]/30' : 'bg-[var(--bg-card)] border-[var(--border)]'}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
+                {isCurrent && (
+                  <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full">Current</span>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
                 {winner && <span className="text-amber-400 font-medium">🥇 {winner.player_name}</span>}
                 {last && last.player_id !== winner?.player_id && (
