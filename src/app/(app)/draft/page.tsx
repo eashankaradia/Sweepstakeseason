@@ -351,6 +351,57 @@ export default function DraftPage() {
     ? allTeamsList.filter(t => t.name.toLowerCase().includes(sharedSearchLower) || (t.short_name ?? '').toLowerCase().includes(sharedSearchLower))
     : allTeamsList
 
+  // ── Non-admin view ──────────────────────────────────────────────────────────
+  if (!isAdmin) {
+    return (
+      <AppShell title="Draft Room">
+        <div className="flex items-center gap-2 mb-5">
+          <Badge variant={isLocked ? 'success' : hasDraft ? 'warning' : 'muted'}>
+            {isLocked ? '🔒 Locked' : hasDraft ? '⏳ In progress' : '⏳ Not yet run'}
+          </Badge>
+          {draftRuns.length > 0 && <span className="text-xs text-[var(--text-muted)]">{formatDate(draftRuns[0].generated_at)}</span>}
+        </div>
+
+        {!hasDraft ? (
+          <EmptyState icon="🎯" title="Draft not yet run" description="The admin hasn't set up the draw yet. Check back soon." />
+        ) : (
+          <>
+            {isLocked && (
+              <div className="mb-4 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <span className="text-emerald-400 text-base">🔒</span>
+                <span className="text-xs text-emerald-300 font-medium">Draft is locked — teams are assigned</span>
+              </div>
+            )}
+            <div className="space-y-2">
+              {currentAlloc.map(({ player, teams, euCount }, i) => (
+                <Card key={i}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <Avatar name={player.name} color={player.color} size="sm" />
+                    <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{player.name}</span>
+                    <span className="text-xs text-[var(--text-muted)]">{teams.length} teams</span>
+                    {euCount > 0 && <Badge variant="purple" className="text-[9px]">{euCount} EU</Badge>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {teams.map((team: any) => team && (
+                      <div key={team.id} className="flex items-center gap-1.5">
+                        <TeamCrest team={team} size="xs" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-[var(--text-secondary)] leading-none">{team.short_name || team.name.split(' ')[0]}</p>
+                          {allEuIds.has(team.id) && <p className="text-[8px] text-purple-400 leading-none mt-0.5">★ EU</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+      </AppShell>
+    )
+  }
+
+  // ── Admin view ──────────────────────────────────────────────────────────────
   return (
     <AppShell title="Draft Room">
       <div className="flex items-center gap-2 mb-4">
@@ -359,7 +410,6 @@ export default function DraftPage() {
         </Badge>
         <span className="text-xs text-[var(--text-secondary)]">{draftRuns.length > 0 ? `Run #${draftRuns[0].run_number}` : 'No runs yet'}</span>
         {draftRuns.length > 0 && <span className="text-xs text-[var(--text-muted)]">· {formatDate(draftRuns[0].generated_at)}</span>}
-        {!isAdmin && <Badge variant="muted" className="ml-auto text-[9px]">View only</Badge>}
       </div>
 
       {competitions.length > 0 && (
@@ -521,16 +571,11 @@ export default function DraftPage() {
             }
           />
           <Req ok={filteredEuIds.size > 0} label={`European teams in pool: ${filteredEuIds.size}`} />
-          <Req ok={isAdmin} label={isAdmin ? 'Admin controls enabled' : 'Only the admin can control the draft'} />
           <Req ok={!isLocked} label={isLocked ? 'Draft locked — unlock to regenerate' : 'Draft unlocked'} />
         </div>
       </Card>
 
-      {!isAdmin ? (
-        <Card className="mb-4 !p-3 text-center text-sm text-[var(--text-secondary)]">
-          The draft room is view-only for players. Eashan can generate, save, and lock the draw.
-        </Card>
-      ) : !isLocked ? (
+      {!isLocked ? (
         <div className="space-y-2 mb-4">
           <Button onClick={handleGenerate} loading={generating} className="w-full" variant="secondary">🎲 Generate new draft</Button>
           {allocations.length > 0 && <Button onClick={handleSave} loading={saving} className="w-full">💾 Save this allocation</Button>}
