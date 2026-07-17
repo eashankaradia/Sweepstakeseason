@@ -34,6 +34,12 @@ export default function DraftPage() {
   const [error, setError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const initialized = useRef(false)
+  // Shared-team ownership: { teamId, playerIds[] } saved separately from the main draft
+  const [sharedEntries, setSharedEntries] = useState<{ teamId: string; playerIds: string[] }[]>([])
+  const [sharedPickTeamId, setSharedPickTeamId] = useState('')
+  const [sharedPickPlayerIds, setSharedPickPlayerIds] = useState<string[]>([])
+  const [sharedSearch, setSharedSearch] = useState('')
+  const [savingShared, setSavingShared] = useState(false)
 
   const supabase = createClient()
 
@@ -120,6 +126,18 @@ export default function DraftPage() {
     setCurrentAssignments(assignmentsData ?? [])
     setCompetitions(compsData ?? [])
     setIsAdmin(isAdminUser(user, profile))
+
+    // Rebuild shared entries: teams that appear for >1 player
+    const teamPlayerIds = new Map<string, string[]>()
+    for (const a of (assignmentsData ?? []) as any[]) {
+      if (!teamPlayerIds.has(a.team_id)) teamPlayerIds.set(a.team_id, [])
+      if (!teamPlayerIds.get(a.team_id)!.includes(a.player_id)) teamPlayerIds.get(a.team_id)!.push(a.player_id)
+    }
+    const shared: { teamId: string; playerIds: string[] }[] = []
+    for (const [teamId, pids] of teamPlayerIds) {
+      if (pids.length > 1) shared.push({ teamId, playerIds: pids })
+    }
+    setSharedEntries(shared)
 
     const map = new Map<string, Team[]>()
     for (const row of (tcData ?? []) as any[]) {
@@ -246,6 +264,38 @@ export default function DraftPage() {
     loadData()
   }
 
+  async function handleSaveSharedTeam() {
+    if (!isAdmin || !league) return
+    if (!sharedPickTeamId) { setError('Pick a team to share'); return }
+    if (sharedPickPlayerIds.length < 2) { setError('Select at least 2 players to share this team'); return }
+    if (sharedPickPlayerIds.length > 3) { setError('Maximum 3 players can share one team'); return }
+    setSavingShared(true)
+    setError('')
+    // Remove any existing assignments for this team+players combo then re-insert
+    await supabase.from('player_team_assignments')
+      .delete()
+      .eq('league_id', league.id)
+      .eq('team_id', sharedPickTeamId)
+      .in('player_id', sharedPickPlayerIds)
+    const rows = sharedPickPlayerIds.map(pid => ({ league_id: league.id, player_id: pid, team_id: sharedPickTeamId, draft_run_id: draftRuns[0]?.id ?? null }))
+    const { error: err } = await supabase.from('player_team_assignments').insert(rows)
+    if (err) { setError(err.message); setSavingShared(false); return }
+    setSharedPickTeamId('')
+    setSharedPickPlayerIds([])
+    setSavingShared(false)
+    loadData()
+  }
+
+  async function handleRemoveSharedTeam(teamId: string) {
+    if (!isAdmin || !league) return
+    // Only delete the extra rows (keep one assignment, or delete all if desired)
+    await supabase.from('player_team_assignments')
+      .delete()
+      .eq('league_id', league.id)
+      .eq('team_id', teamId)
+    loadData()
+  }
+
   async function handleLock() {
     if (!isAdmin) return
     if (!league) return
@@ -286,6 +336,20 @@ export default function DraftPage() {
   )
 
   const searchLower = teamSearch.toLowerCase().trim()
+
+  // Flat deduplicated team list for shared-team picker
+  const allTeamsList: Team[] = []
+  const seenT = new Set<string>()
+  for (const teams of compTeamMap.values()) {
+    for (const t of teams) {
+      if (!seenT.has(t.id)) { seenT.add(t.id); allTeamsList.push(t) }
+    }
+  }
+  allTeamsList.sort((a, b) => a.name.localeCompare(b.name))
+  const sharedSearchLower = sharedSearch.toLowerCase()
+  const filteredSharedTeams = sharedSearchLower
+    ? allTeamsList.filter(t => t.name.toLowerCase().includes(sharedSearchLower) || (t.short_name ?? '').toLowerCase().includes(sharedSearchLower))
+    : allTeamsList
 
   return (
     <AppShell title="Draft Room">
@@ -517,6 +581,9 @@ export default function DraftPage() {
                         {allEuIds.has(team.id) && (
                           <p className="text-[8px] text-purple-400 leading-none mt-0.5">★ EU</p>
                         )}
+                        {sharedEntries.some(s => s.teamId === team.id) && (
+                          <p className="text-[8px] text-amber-400 leading-none mt-0.5">shared</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -524,6 +591,137 @@ export default function DraftPage() {
               </Card>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Shared team ownership */}
+      {hasDraft && (
+        <div className="mt-6">
+          <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">Shared team ownership</h3>
+          <p className="text-xs text-[var(--text-muted)] mb-3">Assign one club to 2–3 players who all own it together.</p>
+
+          {sharedEntries.length > 0 && (
+            <div className="space-y-1.5 mb-4">
+              {sharedEntries.map(entry => {
+                const team = allTeamsList.find(t => t.id === entry.teamId)
+                const entryPlayers = entry.playerIds.map(pid => players.find(p => p.id === pid)).filter(Boolean)
+                return (
+                  <Card key={entry.teamId} className="!p-3">
+                    <div className="flex items-center gap-2">
+                      {team && <TeamCrest team={team} size="xs" />}
+                      <span className="text-sm font-medium text-[var(--text-primary)] flex-1">{team?.short_name || team?.name || entry.teamId}</span>
+                      <div className="flex items-center gap-1">
+                        {entryPlayers.map(p => p && (
+                          <div key={p.id} className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${p.color}25`, color: p.color }}>
+                            {p.name.split(' ')[0]}
+                          </div>
+                        ))}
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveSharedTeam(entry.teamId)}
+                          className="ml-1 text-red-400 hover:text-red-300 text-[10px] shrink-0"
+                          title="Remove all assignments for this team"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
+          {isAdmin && (
+            <Card>
+              <p className="text-xs font-semibold text-[var(--text-secondary)] mb-3">Add shared team</p>
+
+              {/* Team picker */}
+              <div className="mb-3">
+                <label className="text-[10px] text-[var(--text-muted)] mb-1 block">Club</label>
+                <input
+                  type="text"
+                  value={sharedSearch}
+                  onChange={e => { setSharedSearch(e.target.value); setSharedPickTeamId('') }}
+                  placeholder="Search for a team…"
+                  className="w-full px-3 py-1.5 text-xs bg-[var(--bg)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/60 mb-1"
+                />
+                {sharedSearch && !sharedPickTeamId && (
+                  <div className="rounded-lg border border-[var(--border)] overflow-hidden max-h-40 overflow-y-auto">
+                    {filteredSharedTeams.slice(0, 12).map(team => (
+                      <button
+                        key={team.id}
+                        onClick={() => { setSharedPickTeamId(team.id); setSharedSearch(team.short_name || team.name) }}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[var(--bg-card-hover)] text-left border-b border-[var(--border)]/40 last:border-0"
+                      >
+                        <TeamCrest team={team} size="xs" />
+                        <span className="text-xs text-[var(--text-primary)]">{team.name}</span>
+                      </button>
+                    ))}
+                    {filteredSharedTeams.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-[var(--text-muted)]">No teams found</p>
+                    )}
+                  </div>
+                )}
+                {sharedPickTeamId && (() => {
+                  const t = allTeamsList.find(x => x.id === sharedPickTeamId)
+                  return t ? (
+                    <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30">
+                      <TeamCrest team={t} size="xs" />
+                      <span className="text-xs font-medium text-[var(--accent)]">{t.name}</span>
+                      <button onClick={() => { setSharedPickTeamId(''); setSharedSearch('') }} className="ml-auto text-[var(--text-muted)] hover:text-[var(--text-primary)] text-[10px]">✕</button>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
+              {/* Player multi-select */}
+              <div className="mb-3">
+                <label className="text-[10px] text-[var(--text-muted)] mb-1.5 block">Co-owners (2–3 players)</label>
+                <div className="space-y-1">
+                  {players.map(p => {
+                    const selected = sharedPickPlayerIds.includes(p.id)
+                    const maxReached = sharedPickPlayerIds.length >= 3 && !selected
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          if (maxReached) return
+                          setSharedPickPlayerIds(prev =>
+                            prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                          )
+                        }}
+                        disabled={maxReached}
+                        className={[
+                          'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg border transition-colors text-left',
+                          selected
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                            : maxReached
+                            ? 'border-[var(--border)] opacity-40 cursor-not-allowed'
+                            : 'border-[var(--border)] hover:border-[var(--accent)]/50',
+                        ].join(' ')}
+                      >
+                        <Avatar name={p.name} color={p.color} size="xs" />
+                        <span className="text-xs text-[var(--text-primary)] flex-1">{p.name}</span>
+                        {selected && <span className="text-[10px] font-bold" style={{ color: p.color }}>✓</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleSaveSharedTeam}
+                loading={savingShared}
+                disabled={!sharedPickTeamId || sharedPickPlayerIds.length < 2}
+                className="w-full"
+                variant="secondary"
+              >
+                💾 Save shared team
+              </Button>
+            </Card>
+          )}
         </div>
       )}
 
