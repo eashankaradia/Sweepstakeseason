@@ -69,7 +69,7 @@ export default function ActivityPage() {
         .select('*')
         .eq('league_id', leagueId),
       supabase.from('player_team_assignments')
-        .select('team_id, teams(id, name, short_name, crest_url, primary_color)')
+        .select('team_id, teams(id, name, short_name, logo_url, primary_color, secondary_color)')
         .eq('league_id', leagueId),
     ])
 
