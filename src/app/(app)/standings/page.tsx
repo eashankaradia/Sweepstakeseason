@@ -329,8 +329,8 @@ export default function StandingsPage() {
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
             <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-              {/* FPL-style sticky header */}
-              <div className="sticky top-14 z-10 bg-[var(--bg-card)] border-b border-[var(--border)]">
+              {/* Column header */}
+              <div className="bg-[var(--bg-card)] border-b border-[var(--border)]">
                 <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2">
                   <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">#</span>
                   <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Player</span>
@@ -750,7 +750,7 @@ function TablesView({
             gf: aggGF, ga: aggGA, gd: aggGF - aggGA, pts: aggPts,
             owners,
           }
-        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || (a.team.league_position ?? 999) - (b.team.league_position ?? 999))
 
         return (
           <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
