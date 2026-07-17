@@ -70,7 +70,7 @@ export default function DashboardPage() {
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
-      supabase.from('player_team_assignments').select('team_id, player_id, players(id,name,color), teams(id,short_name,name,crest_url,primary_color)').eq('league_id', lg.id),
+      supabase.from('player_team_assignments').select('team_id, player_id, players(id,name,color), teams(id,short_name,name,logo_url,primary_color,secondary_color)').eq('league_id', lg.id),
       supabase.from('fixtures')
         .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
         .eq('league_id', lg.id).eq('status', 'live'),
@@ -363,6 +363,11 @@ export default function DashboardPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* Results chart */}
+      {standings.length > 0 && hasDraft && standings.some((s: any) => s.played > 0) && (
+        <ResultsChart standings={standings} />
       )}
 
       {/* Leaderboard */}
@@ -678,7 +683,7 @@ function LeaderboardRow({ entry, position, isMe, posDelta, form, weeklyPts, team
         {/* Club crests */}
         {teams.length > 0 && (
           <div className="flex items-center gap-0.5 shrink-0">
-            {teams.slice(0, 3).map((t: any) => (
+            {teams.slice(0, 5).map((t: any) => (
               <TeamCrest key={t.id} team={t} size="xs" />
             ))}
           </div>
@@ -771,6 +776,42 @@ function MiniFixtureRow({ fixture, ownerMap, divider }: { fixture: any; ownerMap
         </div>
       </div>
     </Link>
+  )
+}
+
+// ─── Results chart ────────────────────────────────────────────────────────────
+
+function ResultsChart({ standings }: { standings: any[] }) {
+  const maxPts = Math.max(...standings.map((s: any) => s.totalPoints), 1)
+
+  return (
+    <section className="mb-5">
+      <SectionHeader title="Points race" action={<Link href="/standings">Full table →</Link>} />
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3 space-y-1.5">
+        {standings.map((entry: any, idx: number) => {
+          const pct = entry.totalPoints > 0 ? (entry.totalPoints / maxPts) * 100 : 0
+          const wdl = `${entry.wins}W ${entry.draws}D ${entry.losses}L`
+          return (
+            <div key={entry.player.id} className="flex items-center gap-2">
+              <span className="text-[10px] font-bold tabular-nums text-[var(--text-muted)] w-4 shrink-0 text-center">{idx + 1}</span>
+              <span className="text-[11px] font-semibold text-[var(--text-primary)] w-[56px] shrink-0 truncate">{entry.player.name.split(' ')[0]}</span>
+              <div className="flex-1 h-[14px] bg-[var(--bg)] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.max(pct, 1.5)}%`,
+                    backgroundColor: entry.player.color,
+                    opacity: pct > 0 ? 0.9 : 0.25,
+                  }}
+                />
+              </div>
+              <span className="text-[9px] text-[var(--text-muted)] w-[52px] shrink-0 text-right tabular-nums">{wdl}</span>
+              <span className="text-[12px] font-black tabular-nums text-[var(--text-primary)] w-[28px] text-right shrink-0">{entry.totalPoints}</span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
