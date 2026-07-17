@@ -117,7 +117,7 @@ export default function MyTeamsPage() {
           .eq('league_id', leagueId)
           .eq('status', 'scheduled')
           .order('kickoff_time')
-          .limit(80),
+          .limit(300),
       ])
       setPowerUps(pups ?? [])
       setUpcomingFixtures((upFix ?? []) as any[])
