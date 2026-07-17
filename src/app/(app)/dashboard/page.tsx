@@ -251,7 +251,7 @@ export default function DashboardPage() {
 
   const myEntry = myUserId ? standings.find((s: any) => s.player.user_id === myUserId) : null
   const myPos = myEntry ? standings.indexOf(myEntry) + 1 : null
-  const hasDraft = standings.some((s: any) => s.teamCount > 0)
+  const hasDraft = league.draft_locked || standings.some((s: any) => s.teamCount > 0)
 
   const myTeamIdsForStakes = myEntry
     ? new Set([...ownerMap.entries()].filter(([, arr]) => arr.some((p: any) => p.id === myEntry.player.id)).map(([id]) => id))
@@ -314,15 +314,13 @@ export default function DashboardPage() {
       {/* Draft not yet run */}
       {!hasDraft && (
         <div className="rounded-2xl border border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 text-center py-6 px-4 mb-5">
-          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Draft not yet run</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Teams not yet assigned</p>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
-            {league.draft_locked ? 'Draft is locked — contact your admin.' : 'Head to the draft room to assign teams.'}
+            Head to the draft room to assign teams.
           </p>
-          {!league.draft_locked && (
-            <Link href="/draft" className="text-xs text-[var(--accent)] font-semibold hover:underline">
-              Go to draft room →
-            </Link>
-          )}
+          <Link href="/draft" className="text-xs text-[var(--accent)] font-semibold hover:underline">
+            Go to draft room →
+          </Link>
         </div>
       )}
 
