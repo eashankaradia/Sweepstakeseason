@@ -14,8 +14,6 @@ import { formatDate } from '@/lib/utils'
 import { isAdminUser } from '@/lib/admin'
 import type { League, Player, Team, Competition, DraftRun } from '@/lib/supabase/types'
 
-const TEAMS_PER_PLAYER = 5
-
 export default function DraftPage() {
   const [league, setLeague] = useState<League | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -27,6 +25,7 @@ export default function DraftPage() {
   const [draftRuns, setDraftRuns] = useState<DraftRun[]>([])
   const [currentAssignments, setCurrentAssignments] = useState<any[]>([])
   const [teamSearch, setTeamSearch] = useState('')
+  const [ownersPerTeam, setOwnersPerTeam] = useState(3)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -34,7 +33,6 @@ export default function DraftPage() {
   const [error, setError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const initialized = useRef(false)
-  // Shared-team ownership: { teamId, playerIds[] } saved separately from the main draft
   const [sharedEntries, setSharedEntries] = useState<{ teamId: string; playerIds: string[] }[]>([])
   const [sharedPickTeamId, setSharedPickTeamId] = useState('')
   const [sharedPickPlayerIds, setSharedPickPlayerIds] = useState<string[]>([])
@@ -84,8 +82,8 @@ export default function DraftPage() {
     return ids
   }, [competitions, compTeamMap, allEuIds])
 
-  const tpp = players.length > 0 ? Math.floor(filteredTeams.length / players.length) : 0
-  const unusedTeams = players.length > 0 ? filteredTeams.length - players.length * tpp : 0
+  const tpp = players.length > 0 ? Math.floor(filteredTeams.length * ownersPerTeam / players.length) : 0
+  const unusedTeams = players.length > 0 ? filteredTeams.length - players.length * tpp / ownersPerTeam : 0
 
   async function loadData() {
     setLoading(true)
@@ -226,7 +224,9 @@ export default function DraftPage() {
     try {
       if (players.length < 2) throw new Error('Need at least 2 players')
       if (selectedTeamIds.size === 0) throw new Error('Select at least one team')
-      if (tpp < 1) throw new Error(`Need at least ${players.length} teams to draft (have ${filteredTeams.length})`)
+      if (ownersPerTeam > 1 && players.length % ownersPerTeam !== 0)
+        throw new Error(`${players.length} players can't be split into groups of ${ownersPerTeam} co-owners`)
+      if (tpp < 1) throw new Error(`Need at least ${Math.ceil(players.length / ownersPerTeam)} teams (have ${filteredTeams.length})`)
       const leagueSizeMap = new Map<string, number>()
       for (const comp of competitions) {
         if (comp.competition_type !== 'european') {
@@ -239,6 +239,8 @@ export default function DraftPage() {
         filteredTeams,
         filteredEuIds,
         leagueSizeMap,
+        undefined,
+        ownersPerTeam,
       )
       setAllocations(result)
     } catch (e: any) {
@@ -315,7 +317,7 @@ export default function DraftPage() {
   }
 
   const currentTpp = allocations[0]?.teams.length ?? tpp
-  const validation = allocations.length > 0 ? validateDraft(allocations, currentTpp) : null
+  const validation = allocations.length > 0 ? validateDraft(allocations, currentTpp, ownersPerTeam) : null
 
   if (loading) return <AppShell title="Draft Room"><PageLoader /></AppShell>
   if (!league) return <AppShell title="Draft Room"><EmptyState icon="🎯" title="No league set up" description="Create a league first in Settings." /></AppShell>
@@ -326,6 +328,16 @@ export default function DraftPage() {
     const teams = currentAssignments.filter(a => a.player_id === p.id).map((a: any) => a.teams)
     return { player: p, teams: teams.filter(Boolean), euCount: teams.filter((t: any) => t && allEuIds.has(t.id)).length }
   })
+
+  // Map: teamId → Player[] (all co-owners of each team)
+  const ownerMap = new Map<string, Player[]>()
+  for (const a of currentAssignments as any[]) {
+    const p = players.find(pl => pl.id === a.player_id)
+    if (p && a.team_id) {
+      if (!ownerMap.has(a.team_id)) ownerMap.set(a.team_id, [])
+      if (!ownerMap.get(a.team_id)!.find(pl => pl.id === p.id)) ownerMap.get(a.team_id)!.push(p)
+    }
+  }
 
   const totalTeams = Array.from(compTeamMap.values()).reduce((s, t) => s + t.length, 0)
 
@@ -381,16 +393,27 @@ export default function DraftPage() {
                     <span className="text-xs text-[var(--text-muted)]">{teams.length} teams</span>
                     {euCount > 0 && <Badge variant="purple" className="text-[9px]">{euCount} EU</Badge>}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {teams.map((team: any) => team && (
-                      <div key={team.id} className="flex items-center gap-1.5">
-                        <TeamCrest team={team} size="xs" />
-                        <div className="min-w-0">
-                          <p className="text-[10px] text-[var(--text-secondary)] leading-none">{team.short_name || team.name.split(' ')[0]}</p>
-                          {allEuIds.has(team.id) && <p className="text-[8px] text-purple-400 leading-none mt-0.5">★ EU</p>}
+                  <div className="space-y-1.5">
+                    {teams.map((team: any) => {
+                      if (!team) return null
+                      const coOwners = (ownerMap.get(team.id) ?? []).filter(p2 => p2.id !== player.id)
+                      return (
+                        <div key={team.id} className="flex items-center gap-2">
+                          <TeamCrest team={team} size="xs" />
+                          <span className="text-xs text-[var(--text-primary)] flex-1">{team.short_name || team.name}</span>
+                          {coOwners.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] text-[var(--text-muted)]">with</span>
+                              {coOwners.map(co => (
+                                <span key={co.id} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${co.color}25`, color: co.color }}>
+                                  {co.name.split(' ')[0]}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </Card>
               ))}
@@ -549,10 +572,29 @@ export default function DraftPage() {
           </div>
 
           {players.length > 0 && filteredTeams.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-              {selectedTeamIds.size} of {totalTeams} teams selected · {players.length} players →{' '}
-              <strong className="text-[var(--text-primary)]">{tpp > 0 ? `${tpp} each` : 'not enough teams'}</strong>
-              {unusedTeams > 0 && <span className="text-[var(--text-muted)]"> ({unusedTeams} unused)</span>}
+            <div className="mt-3 pt-3 border-t border-[var(--border)]">
+              <p className="text-xs text-[var(--text-secondary)]">
+                {selectedTeamIds.size} teams × {ownersPerTeam} owners ÷ {players.length} players ={' '}
+                <strong className="text-[var(--text-primary)]">{tpp > 0 ? `${tpp} teams each` : 'not enough teams'}</strong>
+                {unusedTeams > 0 && <span className="text-[var(--text-muted)]"> ({Math.floor(unusedTeams)} unused)</span>}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-[var(--text-muted)]">Co-owners per team:</span>
+                {[1, 2, 3].map(k => (
+                  <button
+                    key={k}
+                    onClick={() => { setOwnersPerTeam(k); setAllocations([]) }}
+                    disabled={isLocked}
+                    className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
+                      ownersPerTeam === k
+                        ? 'bg-[var(--accent)] border-[var(--accent)] text-white font-semibold'
+                        : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/50'
+                    } disabled:opacity-40`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </Card>
@@ -564,13 +606,15 @@ export default function DraftPage() {
           <Req ok={players.length >= 2} label={`Players: ${players.length}`} />
           <Req ok={selectedTeamIds.size > 0} label={`Teams selected: ${selectedTeamIds.size}`} />
           <Req
-            ok={tpp >= 1}
-            label={tpp >= 1
-              ? `${tpp} teams per player (${filteredTeams.length} total, ${unusedTeams} unused)`
-              : `Need at least ${players.length} teams (have ${filteredTeams.length})`
+            ok={tpp >= 1 && (ownersPerTeam === 1 || players.length % ownersPerTeam === 0)}
+            label={
+              ownersPerTeam > 1 && players.length % ownersPerTeam !== 0
+                ? `${players.length} players not divisible by ${ownersPerTeam} owners — try a different co-owner setting`
+                : tpp >= 1
+                ? `${filteredTeams.length} teams × ${ownersPerTeam} owners ÷ ${players.length} players = ${tpp} each`
+                : `Need at least ${Math.ceil(players.length / ownersPerTeam)} teams (have ${filteredTeams.length})`
             }
           />
-          <Req ok={filteredEuIds.size > 0} label={`European teams in pool: ${filteredEuIds.size}`} />
           <Req ok={!isLocked} label={isLocked ? 'Draft locked — unlock to regenerate' : 'Draft unlocked'} />
         </div>
       </Card>
@@ -601,49 +645,74 @@ export default function DraftPage() {
         </Card>
       )}
 
-      {(allocations.length > 0 || hasDraft) && (
-        <div>
-          <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">{allocations.length > 0 ? 'Preview' : 'Current allocation'}</h3>
-          <div className="space-y-2">
-            {(allocations.length > 0
-              ? allocations.map(a => ({ name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, euCount: a.europeanCount, avgPosition: a.avgPosition }))
-              : currentAlloc.map(({ player, teams, euCount }) => ({ name: player.name, color: player.color, teams, euCount, avgPosition: null as number | null }))
-            ).map((entry, i) => (
-              <Card key={i}>
-                <div className="flex items-center gap-2 mb-2.5">
-                  <Avatar name={entry.name} color={entry.color} size="sm" />
-                  <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{entry.name}</span>
-                  {entry.avgPosition != null && <span className="text-[10px] text-[var(--text-muted)]">avg pos {entry.avgPosition}</span>}
-                  <span className="text-xs text-[var(--text-muted)]">{entry.teams.length} teams</span>
-                  {entry.euCount > 0 && <Badge variant="purple" className="text-[9px]">{entry.euCount} EU</Badge>}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {entry.teams.map((team: any) => team && (
-                    <div key={team.id} className="flex items-center gap-1.5">
-                      <TeamCrest team={team} size="xs" />
-                      <div className="min-w-0">
-                        <p className="text-[10px] text-[var(--text-secondary)] leading-none">{team.short_name || team.name.split(' ')[0]}</p>
-                        {allEuIds.has(team.id) && (
-                          <p className="text-[8px] text-purple-400 leading-none mt-0.5">★ EU</p>
-                        )}
-                        {sharedEntries.some(s => s.teamId === team.id) && (
-                          <p className="text-[8px] text-amber-400 leading-none mt-0.5">shared</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ))}
+      {(allocations.length > 0 || hasDraft) && (() => {
+        // For preview: build co-owner map from allocations
+        const previewOwnerMap = new Map<string, string[]>()
+        if (allocations.length > 0) {
+          for (const a of allocations) {
+            for (const t of a.teams) {
+              if (!previewOwnerMap.has(t.id)) previewOwnerMap.set(t.id, [])
+              previewOwnerMap.get(t.id)!.push(a.playerName)
+            }
+          }
+        }
+
+        const rows = allocations.length > 0
+          ? allocations.map(a => ({ id: a.playerId, name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, euCount: a.europeanCount, avgPosition: a.avgPosition, isPreview: true }))
+          : currentAlloc.map(({ player, teams, euCount }) => ({ id: player.id, name: player.name, color: player.color, teams, euCount, avgPosition: null as number | null, isPreview: false }))
+
+        return (
+          <div>
+            <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">{allocations.length > 0 ? 'Preview' : 'Current allocation'}</h3>
+            <div className="space-y-2">
+              {rows.map((entry, i) => (
+                <Card key={i}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <Avatar name={entry.name} color={entry.color} size="sm" />
+                    <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{entry.name}</span>
+                    {entry.avgPosition != null && <span className="text-[10px] text-[var(--text-muted)]">avg pos {entry.avgPosition}</span>}
+                    <span className="text-xs text-[var(--text-muted)]">{entry.teams.length} teams</span>
+                    {entry.euCount > 0 && <Badge variant="purple" className="text-[9px]">{entry.euCount} EU</Badge>}
+                  </div>
+                  <div className="space-y-1.5">
+                    {entry.teams.map((team: any) => {
+                      if (!team) return null
+                      const coOwnerNames = entry.isPreview
+                        ? (previewOwnerMap.get(team.id) ?? []).filter(n => n !== entry.name)
+                        : (ownerMap.get(team.id) ?? []).filter(p2 => p2.id !== entry.id).map(p2 => p2.name)
+                      return (
+                        <div key={team.id} className="flex items-center gap-2">
+                          <TeamCrest team={team} size="xs" />
+                          <span className="text-xs text-[var(--text-primary)] flex-1">{team.short_name || team.name}</span>
+                          {coOwnerNames.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap justify-end">
+                              <span className="text-[9px] text-[var(--text-muted)]">with</span>
+                              {coOwnerNames.map((n: string) => {
+                                const co = players.find(p => p.name === n)
+                                return (
+                                  <span key={n} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: co ? `${co.color}25` : 'var(--border)', color: co?.color ?? 'var(--text-muted)' }}>
+                                    {n.split(' ')[0]}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Shared team ownership */}
       {hasDraft && (
         <div className="mt-6">
           <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-2">Shared team ownership</h3>
-          <p className="text-xs text-[var(--text-muted)] mb-3">Assign one club to 2–3 players who all own it together.</p>
+          <p className="text-xs text-[var(--text-muted)] mb-3">Manually override co-ownership for a specific club (e.g. to fix or add a shared entry after the draft).</p>
 
           {sharedEntries.length > 0 && (
             <div className="space-y-1.5 mb-4">
