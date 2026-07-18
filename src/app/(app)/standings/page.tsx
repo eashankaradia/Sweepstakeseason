@@ -615,15 +615,17 @@ function TablesView({
   function OwnerPills({ owners }: { owners: any[] }) {
     if (owners.length === 0) return <span className="text-[9px] text-[var(--text-muted)]">—</span>
     return (
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-nowrap gap-1 overflow-hidden">
         {owners.slice(0, 3).map((o: any) => (
-          <span
+          <Link
             key={o.id}
-            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+            href={`/players/${o.id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none shrink-0 hover:opacity-80 transition-opacity"
             style={{ backgroundColor: `${o.color}20`, color: o.color, border: `1px solid ${o.color}40` }}
           >
             {o.name.split(' ')[0]}
-          </span>
+          </Link>
         ))}
       </div>
     )
@@ -774,9 +776,10 @@ function TablesView({
                   const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
                   const primaryOwner = row.owners[0]
                   return (
-                    <div
+                    <Link
                       key={row.team.id}
-                      className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px]"
+                      href={`/teams/${row.team.id}`}
+                      className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px] hover:bg-[var(--bg-card-hover)] transition-colors"
                       style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
                     >
                       <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
@@ -793,7 +796,7 @@ function TablesView({
                       <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.d}</span>
                       <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.l}</span>
                       <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                    </div>
+                    </Link>
                   )
                 })}
               </div>
