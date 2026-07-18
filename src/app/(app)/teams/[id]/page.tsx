@@ -15,7 +15,7 @@ const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
 
 export default function TeamDetailPage({ params }: { params: { id: string } }) {
   const [team, setTeam] = useState<any>(null)
-  const [owner, setOwner] = useState<any>(null)
+  const [owners, setOwners] = useState<any[]>([])
   const [teamScore, setTeamScore] = useState<any>(null)
   const [fixtures, setFixtures] = useState<any[]>([])
   const [competitions, setCompetitions] = useState<any[]>([])
@@ -35,12 +35,11 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
     if (!t) { setLoading(false); return }
     setTeam(t)
 
-    const [{ data: assignment }, { data: score }, { data: fix }, { data: tc }] = await Promise.all([
+    const [{ data: assignments }, { data: score }, { data: fix }, { data: tc }] = await Promise.all([
       supabase.from('player_team_assignments')
         .select('players(id,name,color,user_id)')
         .eq('league_id', leagueId)
-        .eq('team_id', params.id)
-        .maybeSingle(),
+        .eq('team_id', params.id),
       supabase.from('team_scores')
         .select('*')
         .eq('league_id', leagueId)
@@ -58,7 +57,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
         .eq('team_id', params.id),
     ])
 
-    setOwner((assignment as any)?.players ?? null)
+    setOwners(((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean))
     setTeamScore(score)
     setFixtures((fix ?? []) as any[])
     setCompetitions((tc ?? []).map((r: any) => r.competitions).filter(Boolean))
@@ -143,21 +142,29 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* Owner */}
-      {owner && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 mb-3 flex items-center gap-2.5">
-          <Avatar name={owner.name} color={owner.color} size="md" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-medium">Sweepstake Owner</p>
-            <p className="font-semibold text-sm text-[var(--text-primary)]">{owner.name}</p>
+      {/* Owners */}
+      {owners.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-medium">
+              Sweepstake Owner{owners.length > 1 ? 's' : ''}
+            </p>
+            {teamScore && teamScore.matches_played > 0 && (
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="text-emerald-400 font-medium">{teamScore.wins}W</span>
+                <span className="text-amber-400 font-medium">{teamScore.draws}D</span>
+                <span className="text-red-400 font-medium">{teamScore.losses}L</span>
+              </div>
+            )}
           </div>
-          {teamScore && teamScore.matches_played > 0 && (
-            <div className="text-right text-[11px]">
-              <span className="text-emerald-400 font-medium">{teamScore.wins}W</span>
-              <span className="text-amber-400 font-medium ml-1">{teamScore.draws}D</span>
-              <span className="text-red-400 font-medium ml-1">{teamScore.losses}L</span>
-            </div>
-          )}
+          <div className="flex flex-col gap-2">
+            {owners.map((o: any) => (
+              <Link key={o.id} href={`/players/${o.id}`} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+                <Avatar name={o.name} color={o.color} size="sm" />
+                <span className="font-semibold text-sm text-[var(--text-primary)]">{o.name}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
