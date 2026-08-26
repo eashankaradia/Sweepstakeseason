@@ -19,7 +19,7 @@ export function SignOutButton() {
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-red-400">Sign out</p>
-        <p className="text-xs text-[var(--text-secondary)] truncate">Sign out of Degenerate Sweepstake</p>
+        <p className="text-xs text-[var(--text-secondary)] truncate">Sign out of Sweepstake Season</p>
       </div>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-[var(--text-muted)] shrink-0">
         <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />

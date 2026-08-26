@@ -464,7 +464,7 @@ export default function DraftPage() {
 
       {!isAdmin ? (
         <Card className="mb-4 !p-3 text-center text-sm text-[var(--text-secondary)]">
-          The draft room is view-only for players. Eashan can generate, save, and lock the draw.
+          The draft room is view-only for players. The admin can generate, save, and lock the draw.
         </Card>
       ) : !isLocked ? (
         <div className="space-y-2 mb-4">
