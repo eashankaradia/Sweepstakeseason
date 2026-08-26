@@ -31,6 +31,15 @@ function nameMatches(dbName: string, sdbName: string): boolean {
   return a === b || a.includes(b) || b.includes(a)
 }
 
+function currentSeason(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1 // 1-based
+  // Season start is August; before August we're still in the previous season
+  const startYear = month >= 8 ? year : year - 1
+  return `${startYear}-${startYear + 1}`
+}
+
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
@@ -78,7 +87,7 @@ export async function GET(request: Request) {
     for (const { sdbId, fixtures } of slugGroups.values()) {
       let sdbEvents: any[] = []
       try {
-        const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=2026-2027`)
+        const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=${currentSeason()}`)
         if (r.ok) {
           const d = await r.json()
           sdbEvents = d.events ?? []
