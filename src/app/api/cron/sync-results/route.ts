@@ -73,16 +73,21 @@ export async function GET(request: Request) {
     }
 
     const preloadedResults: { fixture_id: string; home_score: number; away_score: number }[] = []
+    const warnings: string[] = []
 
     for (const { sdbId, fixtures } of slugGroups.values()) {
       let sdbEvents: any[] = []
       try {
-        const r = await fetch(`${SPORTSDB_BASE}/eventspastleague.php?id=${sdbId}`)
+        const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=2025-2026`)
         if (r.ok) {
           const d = await r.json()
           sdbEvents = d.events ?? []
+        } else {
+          warnings.push(`SportsDB ${sdbId} HTTP ${r.status}`)
         }
-      } catch {}
+      } catch (e: any) {
+        warnings.push(`SportsDB ${sdbId} fetch error: ${e?.message}`)
+      }
 
       for (const match of sdbEvents) {
         if (match.strStatus !== 'Match Finished') continue
@@ -112,7 +117,7 @@ export async function GET(request: Request) {
       body: JSON.stringify({ preloaded_results: preloadedResults }),
     })
     const data = await res.json()
-    return NextResponse.json({ ...data, matched: preloadedResults.length })
+    return NextResponse.json({ ...data, matched: preloadedResults.length, warnings })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
