@@ -4,16 +4,31 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = 'https://anbiwffpmgxlbrycckxq.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFuYml3ZmZwbWd4bGJyeWNja3hxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTY4MzQsImV4cCI6MjA5OTEzMjgzNH0.2ECjI3JmO-SwMH1VHeJ95ILm3L6b0e3XV3O3EHsEgeM'
 const EDGE_FN_URL = 'https://anbiwffpmgxlbrycckxq.supabase.co/functions/v1/sync-results'
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
+const SPORTSDB_BASE = 'https://www.thesportsdb.com/api/v1/json/3'
 
-// ESPN blocks requests from Supabase IPs but allows Vercel IPs.
-// This route fetches ESPN data and passes it to the edge function for DB writes.
-const ESPN_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer': 'https://www.espn.com/',
-  'Origin': 'https://www.espn.com',
+// ESPN slug → TheSportsDB league ID
+const ESPN_TO_SPORTSDB: Record<string, string> = {
+  'eng.1': '4328',
+  'eng.2': '4329',
+  'esp.1': '4335',
+  'ger.1': '4331',
+  'fra.1': '4334',
+  'ita.1': '4332',
+  'uefa.champions': '4480',
+  'uefa.europa': '4481',
+}
+
+function normName(s: string): string {
+  return s.toLowerCase()
+    .replace(/\s+f\.?c\.?$/i, '')
+    .replace(/\s+a\.?f\.?c\.?$/i, '')
+    .replace(/&/g, 'and')
+    .trim()
+}
+
+function nameMatches(dbName: string, sdbName: string): boolean {
+  const a = normName(dbName), b = normName(sdbName)
+  return a === b || a.includes(b) || b.includes(a)
 }
 
 export const dynamic = 'force-dynamic'
@@ -26,13 +41,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Read pending fixtures using anon key (fixtures table allows anon ALL)
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     const cutoff = new Date(Date.now() - 95 * 60 * 1000).toISOString()
 
     const { data: pending } = await supabase
       .from('fixtures')
-      .select('external_id, kickoff_time, competitions!inner(espn_slug, competition_type)')
+      .select('id, home_team_id, away_team_id, kickoff_time, competitions!inner(espn_slug, competition_type)')
       .in('status', ['scheduled', 'live'])
       .not('external_id', 'is', null)
       .lt('kickoff_time', cutoff)
@@ -41,57 +55,64 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Nothing to sync', synced: 0 })
     }
 
-    // Group by slug, compute date ranges
-    const slugGroups = new Map<string, { minDate: string; maxDate: string }>()
+    // Get team names
+    const teamIds = [...new Set((pending as any[]).flatMap((f: any) => [f.home_team_id, f.away_team_id]))]
+    const { data: teams } = await supabase.from('teams').select('id, name').in('id', teamIds)
+    const teamMap = new Map((teams ?? []).map((t: any) => [t.id, t.name as string]))
+
+    // Group fixtures by ESPN slug
+    const slugGroups = new Map<string, { sdbId: string; fixtures: any[] }>()
     for (const f of pending as any[]) {
       const comp = f.competitions
       const slug: string = comp?.espn_slug
       if (!slug || comp?.competition_type === 'domestic_cup') continue
-      const date = (f.kickoff_time as string).substring(0, 10).replace(/-/g, '')
-      if (!slugGroups.has(slug)) slugGroups.set(slug, { minDate: date, maxDate: date })
-      const g = slugGroups.get(slug)!
-      if (date < g.minDate) g.minDate = date
-      if (date > g.maxDate) g.maxDate = date
+      const sdbId = ESPN_TO_SPORTSDB[slug]
+      if (!sdbId) continue
+      if (!slugGroups.has(slug)) slugGroups.set(slug, { sdbId, fixtures: [] })
+      slugGroups.get(slug)!.fixtures.push(f)
     }
 
-    // Fetch ESPN events from Vercel (no 403 here)
-    const preloadedEvents: { slug: string; events: any[] }[] = []
-    const today = new Date().toISOString().substring(0, 10).replace(/-/g, '')
+    const preloadedResults: { fixture_id: string; home_score: number; away_score: number }[] = []
 
-    for (const [slug, { minDate }] of slugGroups.entries()) {
-      let events: any[] = []
-
-      // Try results endpoint first (recent completed matches)
+    for (const { sdbId, fixtures } of slugGroups.values()) {
+      let sdbEvents: any[] = []
       try {
-        const r = await fetch(`${ESPN_BASE}/${slug}/results?limit=200`, { headers: ESPN_HEADERS })
+        const r = await fetch(`${SPORTSDB_BASE}/eventspastleague.php?id=${sdbId}`)
         if (r.ok) {
           const d = await r.json()
-          events = d.events ?? []
+          sdbEvents = d.events ?? []
         }
       } catch {}
 
-      // Scoreboard fallback with date range covering all pending fixtures through today
-      if (events.length === 0) {
-        try {
-          const r = await fetch(`${ESPN_BASE}/${slug}/scoreboard?dates=${minDate}-${today}&limit=200`, { headers: ESPN_HEADERS })
-          if (r.ok) {
-            const d = await r.json()
-            events = d.events ?? []
-          }
-        } catch {}
-      }
+      for (const match of sdbEvents) {
+        if (match.strStatus !== 'Match Finished') continue
+        const matchDate = match.dateEvent as string
+        if (!matchDate) continue
+        const homeScore = parseInt(match.intHomeScore ?? '')
+        const awayScore = parseInt(match.intAwayScore ?? '')
+        if (isNaN(homeScore) || isNaN(awayScore)) continue
 
-      preloadedEvents.push({ slug, events })
+        const fixture = fixtures.find((f: any) => {
+          const fDate = (f.kickoff_time as string).substring(0, 10)
+          if (fDate !== matchDate) return false
+          const dbHome = teamMap.get(f.home_team_id) ?? ''
+          const dbAway = teamMap.get(f.away_team_id) ?? ''
+          return nameMatches(dbHome, match.strHomeTeam ?? '') && nameMatches(dbAway, match.strAwayTeam ?? '')
+        })
+
+        if (fixture) {
+          preloadedResults.push({ fixture_id: fixture.id, home_score: homeScore, away_score: awayScore })
+        }
+      }
     }
 
-    // Pass pre-fetched events to the edge function for DB writes
     const res = await fetch(EDGE_FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preloaded_events: preloadedEvents }),
+      body: JSON.stringify({ preloaded_results: preloadedResults }),
     })
     const data = await res.json()
-    return NextResponse.json(data)
+    return NextResponse.json({ ...data, matched: preloadedResults.length })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
