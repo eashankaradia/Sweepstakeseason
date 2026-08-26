@@ -58,14 +58,14 @@ export default function SignupPage() {
               Username <span className="text-[var(--text-muted)]">(used to log in)</span>
             </label>
             <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-              placeholder="eashan" autoComplete="username" autoCapitalize="none" required className={inputCls} />
+              placeholder="username" autoComplete="username" autoCapitalize="none" required className={inputCls} />
           </div>
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
               Display name <span className="text-[var(--text-muted)]">(optional)</span>
             </label>
             <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
-              placeholder="Eashan" autoComplete="name" className={inputCls} />
+              placeholder="Your Name" autoComplete="name" className={inputCls} />
           </div>
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Password</label>

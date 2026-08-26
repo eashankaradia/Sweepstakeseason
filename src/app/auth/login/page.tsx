@@ -60,7 +60,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              placeholder="eashan"
+              placeholder="username"
               autoComplete="username"
               autoCapitalize="none"
               required

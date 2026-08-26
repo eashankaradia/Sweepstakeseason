@@ -86,7 +86,7 @@ export default function OnboardingPage() {
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">League code</label>
               <input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                placeholder="DEGENERATES" autoCapitalize="characters" required className={inputCls} />
+                placeholder="LEAGUE CODE" autoCapitalize="characters" required className={inputCls} />
             </div>
             {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
             <button type="submit" disabled={loading} className="w-full bg-[var(--accent)] text-white rounded-xl py-3 text-sm font-semibold disabled:opacity-50">
@@ -111,7 +111,7 @@ export default function OnboardingPage() {
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">League name</label>
               <input type="text" value={leagueName} onChange={e => setLeagueName(e.target.value)}
-                placeholder="DEGENERATES" required className={inputCls} />
+                placeholder="MY LEAGUE" required className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Season</label>
