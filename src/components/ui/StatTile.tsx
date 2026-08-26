@@ -6,10 +6,11 @@ interface StatTileProps {
   value: string | number
   sub?: string
   accent?: boolean
+  color?: string
   className?: string
 }
 
-export function StatTile({ label, value, sub, accent, className }: StatTileProps) {
+export function StatTile({ label, value, sub, accent, color, className }: StatTileProps) {
   return (
     <div
       className={cn(
@@ -20,7 +21,7 @@ export function StatTile({ label, value, sub, accent, className }: StatTileProps
         className
       )}
     >
-      <span className={cn('text-xl font-black leading-none', accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]')}>
+      <span className={cn('text-xl font-black leading-none', color ?? (accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'))}>
         {value}
       </span>
       {sub && (

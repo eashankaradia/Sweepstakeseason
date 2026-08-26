@@ -8,6 +8,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import Link from 'next/link'
 
 type FormResult = 'W' | 'D' | 'L'
 
@@ -97,10 +98,12 @@ export default function StandingsPage() {
   const [league, setLeague] = useState<any>(null)
   const [hasDraft, setHasDraft] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'overall' | 'monthly' | 'tables' | 'heatmap'>('overall')
+  const [tab, setTab] = useState<'overall' | 'monthly' | 'tables' | 'charts' | 'heatmap'>('overall')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [espnStandings, setEspnStandings] = useState<Map<string, any[]>>(new Map())
   const [espnLoading, setEspnLoading] = useState(false)
+  const [activityFeed, setActivityFeed] = useState<any[]>([])
+  const [recentMatches, setRecentMatches] = useState<any[]>([])
 
   const supabase = createClient()
 
@@ -168,6 +171,7 @@ export default function StandingsPage() {
       { data: compsData },
       { data: tcData },
       { data: recentMatchData },
+      { data: actFeedData },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
@@ -181,7 +185,13 @@ export default function StandingsPage() {
         .eq('league_id', lg.id)
         .eq('status', 'completed')
         .order('kickoff_time', { ascending: false })
-        .limit(250),
+        .limit(500),
+      supabase.from('activity_feed')
+        .select('player_id, points_delta, created_at')
+        .eq('league_id', lg.id)
+        .eq('event_type', 'full_time')
+        .order('created_at', { ascending: true })
+        .limit(3000),
     ])
 
     setAssignments(assignmentsData ?? [])
@@ -189,6 +199,8 @@ export default function StandingsPage() {
     setTeamScores(teamScoresData ?? [])
     setCompetitions(compsData ?? [])
     setTeamCompetitions(tcData ?? [])
+    setRecentMatches([...(recentMatchData ?? [])].reverse())
+    setActivityFeed(actFeedData ?? [])
 
     const draftDone = (assignmentsData?.length ?? 0) > 0
     setHasDraft(draftDone)
@@ -278,9 +290,16 @@ export default function StandingsPage() {
     )
   }
 
-  const ownerMap = new Map<string, any>()
+  const ownerMap = new Map<string, any[]>()
   for (const a of assignments) {
-    if (a.teams) ownerMap.set(a.teams.id, players.find(p => p.id === a.player_id))
+    if (a.teams) {
+      const player = players.find(p => p.id === a.player_id)
+      if (player) {
+        const arr = ownerMap.get(a.teams.id) ?? []
+        if (!arr.find((p: any) => p.id === player.id)) arr.push(player)
+        ownerMap.set(a.teams.id, arr)
+      }
+    }
   }
 
   return (
@@ -297,6 +316,7 @@ export default function StandingsPage() {
           { key: 'overall', label: 'Overall' },
           { key: 'monthly', label: 'Monthly' },
           { key: 'tables', label: 'Tables' },
+          { key: 'charts', label: 'Charts' },
           { key: 'heatmap', label: 'Heatmap' },
         ]}
         active={tab}
@@ -309,9 +329,9 @@ export default function StandingsPage() {
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
             <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-              {/* FPL-style sticky header */}
-              <div className="sticky top-14 z-10 bg-[var(--bg-card)] border-b border-[var(--border)]">
-                <div className="grid grid-cols-[32px_1fr_82px_36px_46px] items-center gap-1 px-3 py-2">
+              {/* Column header */}
+              <div className="bg-[var(--bg-card)] border-b border-[var(--border)]">
+                <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2">
                   <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">#</span>
                   <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Player</span>
                   <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">Form</span>
@@ -339,23 +359,29 @@ export default function StandingsPage() {
                   >
                     <button
                       onClick={() => toggleExpanded(entry.player.id)}
-                      className="w-full text-left min-h-[52px]"
+                      className="w-full text-left"
                     >
-                      <div className="grid grid-cols-[32px_1fr_82px_36px_46px] items-center gap-1 px-3 py-3">
+                      <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2.5 min-h-[48px]">
                         {/* Position with movement arrow */}
-                        <div className="flex flex-col items-center justify-center gap-0.5">
-                          {idx < 3
-                            ? <span className="text-base leading-none">{medals[idx]}</span>
-                            : <span className="text-[12px] font-bold text-[var(--text-muted)]">{idx + 1}</span>
-                          }
-                          <PositionChange movement={movement} />
+                        <div className="flex items-center justify-center gap-0.5 h-full">
+                          <div className="flex flex-col items-center leading-none">
+                            {idx < 3
+                              ? <span className="text-base leading-none">{medals[idx]}</span>
+                              : <span className="text-[12px] font-bold text-[var(--text-muted)]">{idx + 1}</span>
+                            }
+                            <PositionChange movement={movement} />
+                          </div>
                         </div>
 
                         {/* Player */}
-                        <div className="flex items-center gap-2 min-w-0">
+                        <Link
+                          href={`/players/${entry.player.id}`}
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-2 min-w-0"
+                        >
                           <Avatar name={entry.player.name} color={entry.player.color} size="sm" />
                           <div className="min-w-0">
-                            <span className="font-semibold text-sm text-[var(--text-primary)] truncate block leading-tight">
+                            <span className="font-semibold text-sm text-[var(--text-primary)] truncate block leading-tight hover:text-[var(--accent)] transition-colors">
                               {entry.player.name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -370,7 +396,7 @@ export default function StandingsPage() {
                               {!hasDraft && <span className="text-[9px] text-[var(--text-muted)]">Draft pending</span>}
                             </div>
                           </div>
-                        </div>
+                        </Link>
 
                         {/* Form guide */}
                         <div className="flex justify-center">
@@ -461,6 +487,15 @@ export default function StandingsPage() {
         />
       )}
 
+      {tab === 'charts' && (
+        <ChartsView
+          players={players}
+          assignments={assignments}
+          activityFeed={activityFeed}
+          recentMatches={recentMatches}
+        />
+      )}
+
       {tab === 'heatmap' && (
         <HeatmapView
           players={players}
@@ -547,7 +582,7 @@ function TablesView({
   competitions: any[]
   teamScores: any[]
   teamCompetitions: any[]
-  ownerMap: Map<string, any>
+  ownerMap: Map<string, any[]>
   espnStandings: Map<string, any[]>
   espnLoading: boolean
 }) {
@@ -555,11 +590,11 @@ function TablesView({
     return <EmptyState icon="📊" title="No competitions" description="Enable competitions in Settings." />
   }
 
-  const espnTeamLookup = new Map<string, { team: any; owner: any }>()
+  const espnTeamLookup = new Map<string, { team: any; owners: any[] }>()
   for (const tc of teamCompetitions) {
     if (!tc.teams?.espn_team_id) continue
-    const owner = ownerMap.get(tc.teams.id)
-    espnTeamLookup.set(String(tc.teams.espn_team_id), { team: tc.teams, owner })
+    const owners = ownerMap.get(tc.teams.id) ?? []
+    espnTeamLookup.set(String(tc.teams.espn_team_id), { team: tc.teams, owners })
   }
 
   const compTeamMap = new Map<string, any[]>()
@@ -577,6 +612,31 @@ function TablesView({
       (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
     )
 
+  function OwnerPills({ owners }: { owners: any[] }) {
+    if (owners.length === 0) return <span className="text-[9px] text-[var(--text-muted)]">—</span>
+    return (
+      <div className="flex flex-nowrap gap-1 overflow-hidden">
+        {owners.slice(0, 3).map((o: any) => (
+          <Link
+            key={o.id}
+            href={`/players/${o.id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none shrink-0 hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: `${o.color}20`, color: o.color, border: `1px solid ${o.color}40` }}
+          >
+            {o.name.split(' ')[0]}
+          </Link>
+        ))}
+      </div>
+    )
+  }
+
+  const SCROLL_HINT = (
+    <div className="text-[9px] text-[var(--text-muted)] text-right px-3 py-1 border-b border-[var(--border)]/30">
+      ← scroll for W/D/L/GD →
+    </div>
+  )
+
   return (
     <div className="space-y-5">
       {espnLoading && (
@@ -590,15 +650,12 @@ function TablesView({
         const totalTeams = espnRows?.length ?? 0
 
         const compHeader = (
-          <div className={`px-3 py-2 border-b border-[var(--border)] flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
+          <div className={`px-3 py-2 flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
             <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${isEu ? 'bg-purple-500/20 text-purple-400' : isCup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'}`}>
               {comp.short_name}
             </div>
             <span className="font-semibold text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
-            {espnRows && <span className="text-[9px] text-[var(--text-muted)]">Live</span>}
-            <Badge variant={isEu ? 'purple' : isCup ? 'warning' : 'muted'} className="text-[9px]">
-              {isCup ? 'Cup' : isEu ? 'European' : 'League'}
-            </Badge>
+            {espnRows && <span className="text-[9px] text-emerald-400 font-semibold">● Live</span>}
           </div>
         )
 
@@ -606,56 +663,64 @@ function TablesView({
           return (
             <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
               {compHeader}
-              <div className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
-                <span className="text-[9px] text-[var(--text-muted)] text-center">#</span>
-                <span />
-                <span className="text-[9px] text-[var(--text-muted)]">Club</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-center">P</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-center">W</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-center">D</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-center">L</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-center">GD</span>
-                <span className="text-[9px] text-[var(--text-muted)] text-right">Pts</span>
-              </div>
-              {espnRows.map((row: any, idx: number) => {
-                const lookup = espnTeamLookup.get(row.espnTeamId)
-                const team = lookup?.team
-                const owner = lookup?.owner
-                const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
-                const pos = idx + 1
-                const zoneColor =
-                  pos <= 4 ? '#22c55e' :
-                  pos === 5 ? '#f97316' :
-                  pos === 6 ? '#eab308' :
-                  pos > totalTeams - 3 ? '#ef4444' :
-                  'transparent'
-                return (
-                  <div
-                    key={row.espnTeamId}
-                    className={`grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 min-h-[44px] ${owner ? 'bg-[var(--accent)]/3' : 'bg-[var(--bg-card)]'}`}
-                    style={{ borderLeft: owner ? `3px solid ${owner.color}` : `3px solid ${zoneColor}20` }}
-                  >
-                    <span className="text-[10px] text-[var(--text-muted)] text-center font-medium">{pos}</span>
-                    {team ? <TeamCrest team={team} size="xs" /> : <span className="w-4 h-4 rounded-full bg-[var(--border)] shrink-0" />}
-                    <div className="min-w-0">
-                      <span className="text-xs text-[var(--text-primary)] truncate block leading-tight font-medium">
-                        {team?.short_name || row.teamName}
-                      </span>
-                      {owner && (
-                        <span className="text-[9px] font-semibold leading-none" style={{ color: owner.color }}>
-                          {owner.name}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-[var(--text-secondary)] text-center">{row.played}</span>
-                    <span className="text-[10px] text-emerald-400 text-center">{row.wins}</span>
-                    <span className="text-[10px] text-amber-400 text-center">{row.draws}</span>
-                    <span className="text-[10px] text-red-400 text-center">{row.losses}</span>
-                    <span className={`text-[10px] text-center font-medium ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                    <span className="text-[10px] font-bold text-[var(--text-primary)] text-right">{row.points}</span>
+              {SCROLL_HINT}
+              <div className="overflow-x-auto">
+                <div style={{ minWidth: 500 }}>
+                  {/* Header */}
+                  <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
+                    <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
+                    <span className="w-6 shrink-0" />
+                    <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
+                    <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
+                    <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
+                    <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
+                    <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
+                    <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
+                    <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
+                    <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
                   </div>
-                )
-              })}
+                  {espnRows.map((row: any, idx: number) => {
+                    const lookup = espnTeamLookup.get(row.espnTeamId)
+                    const team = lookup?.team
+                    const owners = lookup?.owners ?? []
+                    const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                    const pos = idx + 1
+                    const zoneColor =
+                      pos <= 4 ? '#22c55e' :
+                      pos === 5 ? '#f97316' :
+                      pos === 6 ? '#eab308' :
+                      pos > totalTeams - 3 ? '#ef4444' :
+                      'transparent'
+                    const primaryOwner = owners[0]
+                    return (
+                      <div
+                        key={row.espnTeamId}
+                        className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 min-h-[46px] bg-[var(--bg-card)]"
+                        style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : `3px solid ${zoneColor}40` }}
+                      >
+                        <span className="w-6 text-[10px] text-[var(--text-muted)] text-center font-medium shrink-0">{pos}</span>
+                        <div className="w-6 shrink-0">
+                          {team ? <TeamCrest team={team} size="xs" /> : <span className="w-4 h-4 rounded-full bg-[var(--border)] block" />}
+                        </div>
+                        <div className="w-[110px] shrink-0 min-w-0 pr-1">
+                          <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight font-medium">
+                            {team?.short_name || row.teamName}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0 pr-2">
+                          <OwnerPills owners={owners} />
+                        </div>
+                        <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.points}</span>
+                        <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.played}</span>
+                        <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.wins}</span>
+                        <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.draws}</span>
+                        <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.losses}</span>
+                        <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
               {totalTeams > 0 && (
                 <div className="px-3 py-1.5 border-t border-[var(--border)]/50 bg-[var(--bg-card)] flex items-center gap-3 flex-wrap">
                   <LegendDot color="#22c55e" label="Champions League" />
@@ -681,52 +746,61 @@ function TablesView({
           const aggL = scores.reduce((s: number, ts: any) => s + (ts.losses ?? 0), 0)
           const aggPts = scores.reduce((s: number, ts: any) => s + (ts.total_points ?? 0), 0)
           const aggP = scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0)
+          const owners = ownerMap.get(team.id) ?? []
           return {
             team, p: aggP, w: aggW, d: aggD, l: aggL,
             gf: aggGF, ga: aggGA, gd: aggGF - aggGA, pts: aggPts,
-            owner: ownerMap.get(team.id),
+            owners,
           }
-        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || (a.team.league_position ?? 999) - (b.team.league_position ?? 999))
 
         return (
           <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
             {compHeader}
-            <div className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
-              <span className="text-[9px] text-[var(--text-muted)] text-center">#</span>
-              <span />
-              <span className="text-[9px] text-[var(--text-muted)]">Club</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-center">P</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-center">W</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-center">D</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-center">L</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-center">GD</span>
-              <span className="text-[9px] text-[var(--text-muted)] text-right">Pts</span>
-            </div>
-            {compRows.map((row, idx) => {
-              const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
-              return (
-                <div
-                  key={row.team.id}
-                  className="grid grid-cols-[20px_20px_1fr_22px_22px_22px_22px_34px_32px] items-center gap-0.5 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[44px]"
-                  style={row.owner ? { borderLeft: `3px solid ${row.owner.color}` } : { borderLeft: '3px solid transparent' }}
-                >
-                  <span className="text-[10px] text-[var(--text-muted)] text-center">{idx + 1}</span>
-                  <TeamCrest team={row.team} size="xs" />
-                  <div className="min-w-0">
-                    <span className="text-xs text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
-                    {row.owner && (
-                      <span className="text-[9px] font-semibold leading-none" style={{ color: row.owner.color }}>{row.owner.name}</span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-[var(--text-secondary)] text-center">{row.p}</span>
-                  <span className="text-[10px] text-emerald-400 text-center">{row.w}</span>
-                  <span className="text-[10px] text-amber-400 text-center">{row.d}</span>
-                  <span className="text-[10px] text-red-400 text-center">{row.l}</span>
-                  <span className={`text-[10px] text-center font-medium ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                  <span className="text-[10px] font-bold text-[var(--text-primary)] text-right">{row.pts}</span>
+            {SCROLL_HINT}
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: 500 }}>
+                <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
+                  <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
+                  <span className="w-6 shrink-0" />
+                  <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
+                  <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
+                  <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
+                  <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
+                  <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
+                  <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
+                  <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
+                  <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
                 </div>
-              )
-            })}
+                {compRows.map((row, idx) => {
+                  const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                  const primaryOwner = row.owners[0]
+                  return (
+                    <Link
+                      key={row.team.id}
+                      href={`/teams/${row.team.id}`}
+                      className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px] hover:bg-[var(--bg-card-hover)] transition-colors"
+                      style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
+                    >
+                      <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
+                      <div className="w-6 shrink-0"><TeamCrest team={row.team} size="xs" /></div>
+                      <div className="w-[110px] shrink-0 min-w-0 pr-1">
+                        <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
+                      </div>
+                      <div className="flex-1 min-w-0 pr-2">
+                        <OwnerPills owners={row.owners} />
+                      </div>
+                      <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.pts}</span>
+                      <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.p}</span>
+                      <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.w}</span>
+                      <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.d}</span>
+                      <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.l}</span>
+                      <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         )
       })}
@@ -739,6 +813,305 @@ function LegendDot({ color, label }: { color: string; label: string }) {
     <div className="flex items-center gap-1">
       <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
       <span className="text-[9px] text-[var(--text-muted)]">{label}</span>
+    </div>
+  )
+}
+
+// ─── Charts ───────────────────────────────────────────────────────────────────
+
+type PlayerSeries = { player: any; values: number[] }
+
+function LineChart({
+  title,
+  series,
+  invertY = false,
+  yLabel,
+}: {
+  title: string
+  series: PlayerSeries[]
+  invertY?: boolean
+  yLabel?: string
+}) {
+  const PAD_L = 34, PAD_R = 14, PAD_T = 12, PAD_B = 28
+  const W = 320, H = 180
+  const plotW = W - PAD_L - PAD_R
+  const plotH = H - PAD_T - PAD_B
+
+  const maxX = Math.max(...series.map(s => s.values.length), 2)
+  const allVals = series.flatMap(s => s.values)
+  const rawMin = allVals.length ? Math.min(...allVals) : 0
+  const rawMax = allVals.length ? Math.max(...allVals) : 1
+  const valMin = invertY ? rawMin : Math.min(rawMin, 0)
+  const valMax = invertY ? rawMax : Math.max(rawMax, 1)
+  const range = valMax - valMin || 1
+
+  function xCoord(i: number) {
+    return PAD_L + (i / (maxX - 1)) * plotW
+  }
+  function yCoord(v: number) {
+    const norm = (v - valMin) / range
+    return invertY
+      ? PAD_T + norm * plotH
+      : PAD_T + (1 - norm) * plotH
+  }
+
+  // Y axis grid lines
+  const gridCount = 4
+  const gridVals = Array.from({ length: gridCount + 1 }, (_, i) => {
+    const v = valMin + (range * i) / gridCount
+    return invertY ? valMax - (v - valMin) : v
+  })
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[11px] font-bold text-[var(--text-primary)]">{title}</p>
+        {yLabel && <p className="text-[9px] text-[var(--text-muted)] mt-0.5">{yLabel}</p>}
+      </div>
+      <div className="overflow-x-auto pb-1">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width={W}
+          height={H}
+          style={{ display: 'block', minWidth: W }}
+        >
+          {/* Grid lines */}
+          {gridVals.map((v, i) => {
+            const y = yCoord(invertY ? valMin + (valMax - v) : v)
+            return (
+              <g key={i}>
+                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="var(--border)" strokeWidth="0.5" />
+                <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="8" fill="var(--text-muted)">
+                  {invertY ? Math.round(v) : Math.round(v)}
+                </text>
+              </g>
+            )
+          })}
+          {/* X axis */}
+          <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="var(--border)" strokeWidth="0.5" />
+          {/* X tick labels (every 5th game) */}
+          {Array.from({ length: maxX }, (_, i) => i).filter(i => i === 0 || (i + 1) % 5 === 0 || i === maxX - 1).map(i => (
+            <text key={i} x={xCoord(i)} y={H - PAD_B + 10} textAnchor="middle" fontSize="8" fill="var(--text-muted)">
+              {i + 1}
+            </text>
+          ))}
+          <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="8" fill="var(--text-muted)">Game</text>
+          {/* Series lines */}
+          {series.map(({ player, values }) => {
+            if (values.length < 1) return null
+            const pts = values.map((v, i) => `${xCoord(i)},${yCoord(v)}`).join(' ')
+            const endX = xCoord(values.length - 1)
+            const endY = yCoord(values[values.length - 1])
+            return (
+              <g key={player.id}>
+                <polyline points={pts} fill="none" stroke={player.color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+                <circle cx={endX} cy={endY} r="3" fill={player.color} />
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 px-4 pb-3 pt-1">
+        {series.map(({ player }) => (
+          <div key={player.id} className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
+            <span className="text-[9px] text-[var(--text-muted)]">{player.name.split(' ')[0]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ResultDotsView({
+  players,
+  assignments,
+  recentMatches,
+}: {
+  players: any[]
+  assignments: any[]
+  recentMatches: any[]
+}) {
+  // Build team → player map
+  const teamPlayerMap = new Map<string, any>()
+  for (const a of assignments) {
+    if (!teamPlayerMap.has(a.team_id)) {
+      const player = players.find(p => p.id === a.player_id)
+      if (player) teamPlayerMap.set(a.team_id, player)
+    }
+  }
+
+  // Build player → team ids map
+  const playerTeamsMap = new Map<string, Set<string>>()
+  for (const a of assignments) {
+    if (!playerTeamsMap.has(a.player_id)) playerTeamsMap.set(a.player_id, new Set())
+    playerTeamsMap.get(a.player_id)!.add(a.team_id)
+  }
+
+  // Compute result per game event per player (recentMatches in ASC order)
+  type Dot = 'W' | 'D' | 'L'
+  const playerResults = new Map<string, Dot[]>()
+  for (const m of recentMatches) {
+    const homePlayer = teamPlayerMap.get(m.home_team_id)
+    const awayPlayer = teamPlayerMap.get(m.away_team_id)
+    const isDraw = m.home_score === m.away_score
+    if (homePlayer) {
+      const arr = playerResults.get(homePlayer.id) ?? []
+      arr.push(isDraw ? 'D' : m.home_score > m.away_score ? 'W' : 'L')
+      playerResults.set(homePlayer.id, arr)
+    }
+    if (awayPlayer && awayPlayer.id !== homePlayer?.id) {
+      const arr = playerResults.get(awayPlayer.id) ?? []
+      arr.push(isDraw ? 'D' : m.away_score > m.home_score ? 'W' : 'L')
+      playerResults.set(awayPlayer.id, arr)
+    }
+  }
+
+  const sortedPlayers = [...players].sort((a, b) => {
+    const ra = playerResults.get(a.id) ?? []
+    const rb = playerResults.get(b.id) ?? []
+    const winsA = ra.filter(r => r === 'W').length
+    const winsB = rb.filter(r => r === 'W').length
+    return winsB - winsA
+  })
+
+  const dotColor: Record<Dot, string> = {
+    W: '#10b981',
+    D: '#f59e0b',
+    L: '#ef4444',
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[11px] font-bold text-[var(--text-primary)]">Result Dots</p>
+        <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Each team's match results in order</p>
+      </div>
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: 320 }}>
+          {sortedPlayers.map(player => {
+            const dots = playerResults.get(player.id) ?? []
+            if (dots.length === 0) return null
+            const w = dots.filter(d => d === 'W').length
+            const d = dots.filter(d => d === 'D').length
+            const l = dots.filter(d => d === 'L').length
+            return (
+              <div key={player.id} className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]/40 last:border-0">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
+                <span className="text-[10px] font-semibold text-[var(--text-primary)] w-20 shrink-0 truncate">
+                  {player.name.split(' ')[0]}
+                </span>
+                <div className="flex flex-wrap gap-[3px] flex-1 min-w-0">
+                  {dots.map((dot, i) => (
+                    <div
+                      key={i}
+                      className="w-[9px] h-[9px] rounded-full shrink-0"
+                      style={{ backgroundColor: dotColor[dot] }}
+                      title={dot}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-1.5 shrink-0 text-[9px] font-mono ml-2">
+                  <span className="text-emerald-400">{w}W</span>
+                  <span className="text-amber-400">{d}D</span>
+                  <span className="text-red-400">{l}L</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ChartsView({
+  players,
+  assignments,
+  activityFeed,
+  recentMatches,
+}: {
+  players: any[]
+  assignments: any[]
+  activityFeed: any[]
+  recentMatches: any[]
+}) {
+  if (players.length === 0) {
+    return <EmptyState icon="📈" title="No data yet" description="Charts will appear once matches have been played." />
+  }
+
+  // Build cumulative points per player from activityFeed (already ASC order)
+  const cumulMap = new Map<string, number[]>()
+  const runningTotals = new Map<string, number>()
+  for (const p of players) {
+    cumulMap.set(p.id, [])
+    runningTotals.set(p.id, 0)
+  }
+
+  // Group activity by game round (events close in time = same round)
+  // We'll track each player's cumulative points after each activity_feed entry
+  for (const ev of activityFeed) {
+    const prev = runningTotals.get(ev.player_id) ?? 0
+    const next = prev + (ev.points_delta ?? 0)
+    runningTotals.set(ev.player_id, next)
+    cumulMap.get(ev.player_id)?.push(next)
+  }
+
+  // Build position race: after each event, rank players
+  // We'll reconstruct step-by-step rank per game number
+  const playerOrder = players.filter(p => (cumulMap.get(p.id) ?? []).length > 0)
+
+  // Points race series
+  const pointsSeries: PlayerSeries[] = playerOrder.map(p => ({
+    player: p,
+    values: cumulMap.get(p.id) ?? [],
+  }))
+
+  // Position race: at each game index, rank players
+  const maxGames = Math.max(...playerOrder.map(p => (cumulMap.get(p.id) ?? []).length), 1)
+  const positionSeries: PlayerSeries[] = playerOrder.map(p => {
+    const vals: number[] = []
+    const pVals = cumulMap.get(p.id) ?? []
+    for (let i = 0; i < pVals.length; i++) {
+      // Get each player's pts at game i (use last known value if they played fewer games)
+      const snapshot = playerOrder.map(other => {
+        const ov = cumulMap.get(other.id) ?? []
+        return ov[i] ?? (ov[ov.length - 1] ?? 0)
+      })
+      const myPts = pVals[i]
+      const rank = snapshot.filter(v => v > myPts).length + 1
+      vals.push(rank)
+    }
+    return { player: p, values: vals }
+  })
+
+  const hasData = pointsSeries.some(s => s.values.length > 0)
+
+  return (
+    <div className="space-y-4">
+      {hasData ? (
+        <>
+          <LineChart
+            title="Points Race"
+            series={pointsSeries}
+            yLabel="Cumulative points"
+          />
+          <LineChart
+            title="Position Race"
+            series={positionSeries}
+            invertY={true}
+            yLabel="Position (lower = better)"
+          />
+        </>
+      ) : (
+        <EmptyState icon="📈" title="No chart data" description="Points charts will appear once games have been played and recorded." />
+      )}
+      <ResultDotsView
+        players={players}
+        assignments={assignments}
+        recentMatches={recentMatches}
+      />
     </div>
   )
 }

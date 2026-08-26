@@ -70,7 +70,7 @@ export default function DashboardPage() {
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
-      supabase.from('player_team_assignments').select('team_id, player_id, players(id,name,color)').eq('league_id', lg.id),
+      supabase.from('player_team_assignments').select('team_id, player_id, players(id,name,color), teams(id,short_name,name,logo_url,primary_color,secondary_color)').eq('league_id', lg.id),
       supabase.from('fixtures')
         .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
         .eq('league_id', lg.id).eq('status', 'live'),
@@ -97,11 +97,18 @@ export default function DashboardPage() {
 
     // Owner map: team_id → player[]
     const oMap = new Map<string, any[]>()
+    // Player → teams map (for leaderboard crests)
+    const playerTeamsMap = new Map<string, any[]>()
     for (const a of (assignments ?? []) as any[]) {
       if (a.players && a.team_id) {
         const arr = oMap.get(a.team_id) ?? []
         arr.push(a.players)
         oMap.set(a.team_id, arr)
+      }
+      if (a.teams && a.player_id) {
+        const arr = playerTeamsMap.get(a.player_id) ?? []
+        if (!arr.find((t: any) => t.id === a.teams.id)) arr.push(a.teams)
+        playerTeamsMap.set(a.player_id, arr)
       }
     }
     setOwnerMap(oMap)
@@ -141,6 +148,7 @@ export default function DashboardPage() {
         played: score?.matches_played ?? 0,
         bonusPoints: score?.bonus_points ?? 0,
         teamCount: myTeams.length,
+        teams: playerTeamsMap.get(p.id) ?? [],
       }
     }).sort((a: any, b: any) => b.totalPoints - a.totalPoints)
 
@@ -243,7 +251,7 @@ export default function DashboardPage() {
 
   const myEntry = myUserId ? standings.find((s: any) => s.player.user_id === myUserId) : null
   const myPos = myEntry ? standings.indexOf(myEntry) + 1 : null
-  const hasDraft = standings.some((s: any) => s.teamCount > 0)
+  const hasDraft = league.draft_locked || standings.some((s: any) => s.teamCount > 0)
 
   const myTeamIdsForStakes = myEntry
     ? new Set([...ownerMap.entries()].filter(([, arr]) => arr.some((p: any) => p.id === myEntry.player.id)).map(([id]) => id))
@@ -306,15 +314,13 @@ export default function DashboardPage() {
       {/* Draft not yet run */}
       {!hasDraft && (
         <div className="rounded-2xl border border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 text-center py-6 px-4 mb-5">
-          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Draft not yet run</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Teams not yet assigned</p>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
-            {league.draft_locked ? 'Draft is locked — contact your admin.' : 'Head to the draft room to assign teams.'}
+            Head to the draft room to assign teams.
           </p>
-          {!league.draft_locked && (
-            <Link href="/draft" className="text-xs text-[var(--accent)] font-semibold hover:underline">
-              Go to draft room →
-            </Link>
-          )}
+          <Link href="/draft" className="text-xs text-[var(--accent)] font-semibold hover:underline">
+            Go to draft room →
+          </Link>
         </div>
       )}
 
@@ -359,6 +365,11 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* Results chart */}
+      {standings.length > 0 && hasDraft && standings.some((s: any) => s.played > 0) && (
+        <ResultsChart standings={standings} />
+      )}
+
       {/* Leaderboard */}
       {standings.length > 0 && hasDraft && (
         <section className="mb-5">
@@ -376,6 +387,7 @@ export default function DashboardPage() {
                 posDelta={posChangeMap.get(entry.player.id) ?? 0}
                 form={formMap.get(entry.player.id) ?? []}
                 weeklyPts={weeklyPtsMap.get(entry.player.id) ?? 0}
+                teams={entry.teams ?? []}
               />
             ))}
           </div>
@@ -621,56 +633,74 @@ function TodayFixtureCard({ fixture, ownerMap, isMine, myPowerUps }: {
 
 // ─── Leaderboard row ──────────────────────────────────────────────────────────
 
-function LeaderboardRow({ entry, position, isMe, posDelta, form, weeklyPts }: {
+function LeaderboardRow({ entry, position, isMe, posDelta, form, weeklyPts, teams }: {
   entry: any; position: number; isMe: boolean
-  posDelta: number; form: string[]; weeklyPts: number
+  posDelta: number; form: string[]; weeklyPts: number; teams: any[]
 }) {
-  const posColor = position === 1 ? 'text-[var(--amber)]' : position <= 3 ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'
+  const medals = ['🥇', '🥈', '🥉']
+  const posColor = position === 1 ? 'text-amber-400' : position <= 3 ? 'text-slate-300' : 'text-[var(--text-muted)]'
   return (
-    <div className={[
-      'flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)] last:border-0',
-      isMe ? 'bg-[var(--accent)]/5' : 'bg-[var(--bg-card)]',
-    ].join(' ')}>
-      <span className={`w-5 text-[11px] font-bold tabular-nums shrink-0 ${posColor}`}>{position}</span>
-      <Avatar name={entry.player.name} color={entry.player.color} size="sm" />
+    <Link href={`/players/${entry.player.id}`}>
+      <div className={[
+        'flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] last:border-0 min-h-[44px]',
+        'hover:bg-[var(--bg-card-hover)] transition-colors',
+        isMe ? 'bg-[var(--accent)]/5' : 'bg-[var(--bg-card)]',
+      ].join(' ')}>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-[var(--text-primary)] truncate">{entry.player.name}</span>
-          {isMe && <span className="text-[9px] text-[var(--accent)] font-bold uppercase shrink-0">You</span>}
+        {/* Position */}
+        <div className="w-6 shrink-0 flex items-center justify-center gap-0.5">
+          {position <= 3
+            ? <span className="text-sm leading-none">{medals[position - 1]}</span>
+            : <span className={`text-[12px] font-bold tabular-nums ${posColor}`}>{position}</span>
+          }
+          {posDelta > 0 && <span className="text-[7px] font-black text-emerald-400 leading-none">▲</span>}
+          {posDelta < 0 && <span className="text-[7px] font-black text-red-400 leading-none">▼</span>}
         </div>
-        {/* Form squares */}
-        {form.length > 0 && (
-          <div className="flex items-center gap-[3px] mt-1">
-            {form.map((r, i) => (
-              <span
-                key={i}
-                className={`w-[14px] h-[14px] rounded-[3px] ${
-                  r === 'W' ? 'bg-[var(--green)]' :
-                  r === 'D' ? 'bg-[var(--amber)]' :
-                  'bg-[var(--red)]/60'
-                }`}
-                title={r === 'W' ? 'Win' : r === 'D' ? 'Draw' : 'Loss'}
-              />
+
+        {/* Avatar */}
+        <Avatar name={entry.player.name} color={entry.player.color} size="xs" />
+
+        {/* Name + form */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate">{entry.player.name}</span>
+            {isMe && <span className="text-[8px] text-[var(--accent)] font-bold uppercase shrink-0">You</span>}
+          </div>
+          {form.length > 0 && (
+            <div className="flex items-center gap-[2px] mt-0.5">
+              {form.slice(0, 5).map((r, i) => (
+                <span
+                  key={i}
+                  className={`w-[9px] h-[9px] rounded-[2px] ${
+                    r === 'W' ? 'bg-emerald-500' : r === 'D' ? 'bg-amber-400' : 'bg-red-500/70'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Club crests */}
+        {teams.length > 0 && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {teams.slice(0, 5).map((t: any) => (
+              <TeamCrest key={t.id} team={t} size="xs" />
             ))}
-            {posDelta !== 0 && (
-              <span className={`ml-1 text-[10px] font-bold ${posDelta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
-                {posDelta > 0 ? `↑${posDelta}` : `↓${Math.abs(posDelta)}`}
-              </span>
-            )}
           </div>
         )}
-      </div>
 
-      <div className="text-right shrink-0">
-        <div className="flex items-center gap-1.5 justify-end">
-          {weeklyPts > 0 && <span className="text-[10px] text-[var(--green)] font-semibold">+{weeklyPts}</span>}
-          {weeklyPts < 0 && <span className="text-[10px] text-[var(--red)] font-semibold">{weeklyPts}</span>}
+        {/* Points */}
+        <div className="text-right shrink-0 min-w-[40px]">
+          {weeklyPts !== 0 && (
+            <div className={`text-[9px] font-bold leading-none mb-0.5 ${weeklyPts > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {weeklyPts > 0 ? '+' : ''}{weeklyPts}
+            </div>
+          )}
           <span className="text-sm font-bold text-[var(--text-primary)] tabular-nums">{entry.totalPoints}</span>
+          <div className="text-[8px] text-[var(--text-muted)] leading-none">pts</div>
         </div>
-        <span className="text-[9px] text-[var(--text-muted)]">pts</span>
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -746,6 +776,42 @@ function MiniFixtureRow({ fixture, ownerMap, divider }: { fixture: any; ownerMap
         </div>
       </div>
     </Link>
+  )
+}
+
+// ─── Results chart ────────────────────────────────────────────────────────────
+
+function ResultsChart({ standings }: { standings: any[] }) {
+  const maxPts = Math.max(...standings.map((s: any) => s.totalPoints), 1)
+
+  return (
+    <section className="mb-5">
+      <SectionHeader title="Points race" action={<Link href="/standings">Full table →</Link>} />
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3 space-y-1.5">
+        {standings.map((entry: any, idx: number) => {
+          const pct = entry.totalPoints > 0 ? (entry.totalPoints / maxPts) * 100 : 0
+          const wdl = `${entry.wins}W ${entry.draws}D ${entry.losses}L`
+          return (
+            <div key={entry.player.id} className="flex items-center gap-2">
+              <span className="text-[10px] font-bold tabular-nums text-[var(--text-muted)] w-4 shrink-0 text-center">{idx + 1}</span>
+              <span className="text-[11px] font-semibold text-[var(--text-primary)] w-[56px] shrink-0 truncate">{entry.player.name.split(' ')[0]}</span>
+              <div className="flex-1 h-[14px] bg-[var(--bg)] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.max(pct, 1.5)}%`,
+                    backgroundColor: entry.player.color,
+                    opacity: pct > 0 ? 0.9 : 0.25,
+                  }}
+                />
+              </div>
+              <span className="text-[9px] text-[var(--text-muted)] w-[52px] shrink-0 text-right tabular-nums">{wdl}</span>
+              <span className="text-[12px] font-black tabular-nums text-[var(--text-primary)] w-[28px] text-right shrink-0">{entry.totalPoints}</span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

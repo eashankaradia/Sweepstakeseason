@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Avatar } from '@/components/ui/Avatar'
+import { TeamCrest } from '@/components/ui/TeamCrest'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 import { FilterChip } from '@/components/ui/FilterChip'
@@ -37,6 +38,7 @@ type EventGroup = {
 export default function ActivityPage() {
   const [groups, setGroups] = useState<EventGroup[]>([])
   const [players, setPlayers] = useState<Map<string, any>>(new Map())
+  const [teams, setTeams] = useState<Map<string, any>>(new Map())
   const [reactions, setReactions] = useState<Map<string, any[]>>(new Map())
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -54,7 +56,7 @@ export default function ActivityPage() {
     const { data: authData } = await supabase.auth.getUser()
     const uid = authData?.user?.id
 
-    const [{ data: feed }, { data: playerList }, { data: rxns }] = await Promise.all([
+    const [{ data: feed }, { data: playerList }, { data: rxns }, { data: assignmentsData }] = await Promise.all([
       supabase.from('activity_feed')
         .select('*')
         .eq('league_id', leagueId)
@@ -66,10 +68,19 @@ export default function ActivityPage() {
       supabase.from('activity_reactions')
         .select('*')
         .eq('league_id', leagueId),
+      supabase.from('player_team_assignments')
+        .select('team_id, teams(id, name, short_name, logo_url, primary_color, secondary_color)')
+        .eq('league_id', leagueId),
     ])
 
     const pMap = new Map((playerList ?? []).map((p: any) => [p.id, p]))
     setPlayers(pMap)
+
+    const tMap = new Map<string, any>()
+    for (const a of (assignmentsData ?? []) as any[]) {
+      if (a.teams && !tMap.has(a.team_id)) tMap.set(a.team_id, a.teams)
+    }
+    setTeams(tMap)
 
     const myPlayer = uid ? (playerList ?? []).find((p: any) => p.user_id === uid) : null
     setMyPlayerId(myPlayer?.id ?? null)
@@ -192,6 +203,7 @@ export default function ActivityPage() {
               <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
                 {group.events.map((event, i) => {
                   const player = event.player_id ? players.get(event.player_id) : null
+                  const team = event.team_id ? teams.get(event.team_id) : null
                   const meta = EVENT_META[event.event_type] ?? EVENT_META.default
                   const isPositive = (event.points_delta ?? 0) > 0
                   const isNegative = (event.points_delta ?? 0) < 0
@@ -226,7 +238,10 @@ export default function ActivityPage() {
                               <span>{meta.label}</span>
                             </div>
                           )}
-                          <p className="text-sm text-[var(--text-primary)] leading-snug font-medium">{event.title}</p>
+                          <div className="flex items-center gap-1.5">
+                            {team && <TeamCrest team={team} size="xs" />}
+                            <p className="text-sm text-[var(--text-primary)] leading-snug font-medium">{event.title}</p>
+                          </div>
                           {event.body && (
                             <p className="text-xs text-[var(--text-secondary)] mt-0.5 leading-snug">{event.body}</p>
                           )}
