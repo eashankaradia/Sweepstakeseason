@@ -78,7 +78,7 @@ export async function GET(request: Request) {
     for (const { sdbId, fixtures } of slugGroups.values()) {
       let sdbEvents: any[] = []
       try {
-        const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=2025-2026`)
+        const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=2026-2027`)
         if (r.ok) {
           const d = await r.json()
           sdbEvents = d.events ?? []
