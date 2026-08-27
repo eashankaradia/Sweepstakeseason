@@ -33,6 +33,7 @@ export default function LeagueSettingsPage() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState<string | null>(null)
+  const [revealedCode, setRevealedCode] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -64,6 +65,9 @@ export default function LeagueSettingsPage() {
   }
 
   async function updateStatus(league: League, status: League['status']) {
+    if (status === 'completed' && !confirm(
+      `Mark "${league.name}" as completed?\n\nThis just changes the label shown around the app - fixture sync and scoring keep running in the background regardless. It does not lock anything or stop results being recorded.`
+    )) return
     await supabase.from('sweepstake_leagues').update({ status }).eq('id', league.id)
     loadData()
   }
@@ -88,9 +92,16 @@ export default function LeagueSettingsPage() {
 
   return (
     <AppShell title="League Setup" backHref="/settings">
-      {leagues.map(lg => (
+      {leagues.map(lg => {
+        const statusCopy: Record<string, string> = {
+          setup: 'Being configured — competitions, players and scoring can still be adjusted freely.',
+          active: 'Season is underway.',
+          completed: 'Marked as finished. This is just a label shown around the app — fixture sync and scoring keep running regardless.',
+        }
+        const isRevealed = revealedCode === lg.id
+        return (
         <Card key={lg.id} className="mb-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1">
             <div>
               <p className="font-semibold text-sm text-[var(--text-primary)]">{lg.name}</p>
               <p className="text-xs text-[var(--text-secondary)]">{lg.season}</p>
@@ -99,13 +110,24 @@ export default function LeagueSettingsPage() {
               {lg.status}
             </Badge>
           </div>
+          {lg.status && (
+            <p className="text-[10px] text-[var(--text-secondary)] mb-3">{statusCopy[lg.status] ?? ''}</p>
+          )}
 
           <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] px-3 py-2 mb-3">
             <p className="text-[10px] text-[var(--text-muted)] mb-1">Invite link — share with players</p>
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs text-[var(--text-secondary)] flex-1 truncate">
-                /join/{lg.access_code ?? '—'}
+                {lg.access_code ? (isRevealed ? `/join/${lg.access_code}` : '/join/••••••••') : '—'}
               </span>
+              {lg.access_code && (
+                <button
+                  onClick={() => setRevealedCode(isRevealed ? null : lg.id)}
+                  className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+                >
+                  {isRevealed ? 'Hide' : 'Show'}
+                </button>
+              )}
               {lg.access_code && (
                 <button
                   onClick={() => copyInviteLink(lg)}
@@ -124,17 +146,21 @@ export default function LeagueSettingsPage() {
             </div>
           </div>
 
-          <div className="flex gap-2 flex-wrap">
-            {lg.status === 'setup' && (
-              <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>Set active</Button>
-            )}
-            {lg.status === 'active' && (
-              <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>Mark completed</Button>
-            )}
-            {lg.draft_locked && <Badge variant="info">Draft locked</Badge>}
+          <div>
+            <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-1.5">League lifecycle</p>
+            <div className="flex gap-2 flex-wrap">
+              {lg.status === 'setup' && (
+                <Button size="sm" variant="success" onClick={() => updateStatus(lg, 'active')}>Set active</Button>
+              )}
+              {lg.status === 'active' && (
+                <Button size="sm" variant="secondary" onClick={() => updateStatus(lg, 'completed')}>Mark completed</Button>
+              )}
+              {lg.draft_locked && <Badge variant="info">Draft locked</Badge>}
+            </div>
           </div>
         </Card>
-      ))}
+        )
+      })}
 
       {!creating ? (
         <Button onClick={() => setCreating(true)} variant="secondary" className="w-full">+ Create new league</Button>
@@ -143,15 +169,31 @@ export default function LeagueSettingsPage() {
           <h3 className="font-semibold text-sm text-[var(--text-primary)] mb-3">New league</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-[var(--text-secondary)] block mb-1">League name</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Sweepstake 2026/27" />
+              <label htmlFor="new-league-name" className="text-xs text-[var(--text-secondary)] block mb-1">League name</label>
+              <input
+                id="new-league-name"
+                name="name"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Sweepstake 2026/27"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'new-league-error' : undefined}
+              />
             </div>
             <div>
-              <label className="text-xs text-[var(--text-secondary)] block mb-1">Season</label>
-              <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} placeholder="e.g. 2026/2027" />
+              <label htmlFor="new-league-season" className="text-xs text-[var(--text-secondary)] block mb-1">Season</label>
+              <input
+                id="new-league-season"
+                name="season"
+                value={form.season}
+                onChange={e => setForm(f => ({ ...f, season: e.target.value }))}
+                placeholder="e.g. 2026/2027"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'new-league-error' : undefined}
+              />
             </div>
           </div>
-          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          {error && <p id="new-league-error" role="alert" className="text-xs text-red-400 mt-2">{error}</p>}
           <p className="text-xs text-[var(--text-secondary)] mt-2">Creates the league with default competitions and a random join code.</p>
           <div className="flex gap-2 mt-3">
             <Button onClick={createLeague} loading={saving} className="flex-1">Create</Button>
