@@ -111,7 +111,22 @@ export default function FixturesPage() {
   if (error) return <AppShell title="Fixtures"><ErrorState onRetry={load} /></AppShell>
 
   return (
-    <AppShell title="Fixtures">
+    <AppShell
+      title="Fixtures"
+      action={
+        <Link
+          href="/teams"
+          aria-label="Browse all clubs"
+          title="Browse all clubs"
+          className="w-11 h-11 -mr-1.5 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+          </svg>
+        </Link>
+      }
+    >
       <TabBar
         tabs={[{ key: 'upcoming', label: 'Upcoming' }, { key: 'results', label: 'Results' }, { key: 'calendar', label: 'Calendar' }]}
         active={activeTab}
