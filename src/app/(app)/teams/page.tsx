@@ -102,13 +102,16 @@ export default function TeamsPage() {
   return (
     <AppShell title="Teams">
       {hasTeams && (
-        <div className="flex items-center gap-1.5 mb-4">
-          <FilterChip active={sortMode === 'sweepstake'} onClick={() => setSortMode('sweepstake')}>
-            Sweepstake pts
-          </FilterChip>
-          <FilterChip active={sortMode === 'last-season'} onClick={() => setSortMode('last-season')}>
-            Last season
-          </FilterChip>
+        <div className="mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1.5 px-0.5">Sort by</p>
+          <div className="flex items-center gap-1.5">
+            <FilterChip active={sortMode === 'sweepstake'} onClick={() => setSortMode('sweepstake')}>
+              Sweepstake pts
+            </FilterChip>
+            <FilterChip active={sortMode === 'last-season'} onClick={() => setSortMode('last-season')}>
+              Last season
+            </FilterChip>
+          </div>
         </div>
       )}
 
@@ -119,6 +122,10 @@ export default function TeamsPage() {
           {sortedCompetitions.map(({ competition, teams }) => {
             const isEu = competition.competition_type === 'european'
             const sorted = sortTeams(teams, sortMode)
+            // Domestic leagues are almost always single-country - showing "England" on
+            // every single row is redundant once it's true for the whole section.
+            const uniqueCountries = new Set(teams.map((t: any) => t.country).filter(Boolean))
+            const sharedCountry = uniqueCountries.size === 1 ? [...uniqueCountries][0] : null
             return (
               <div key={competition.id}>
                 <div className={`rounded-t-xl border border-b-0 px-3 py-2.5 flex items-center gap-2 ${isEu ? 'bg-purple-500/8 border-purple-500/25' : 'bg-[var(--accent)]/8 border-[var(--accent)]/25'}`}>
@@ -127,7 +134,9 @@ export default function TeamsPage() {
                     shortName={competition.short_name}
                     type={competition.competition_type}
                   />
-                  <span className="text-xs font-medium text-[var(--text-secondary)] flex-1 truncate">{competition.name}</span>
+                  <span className="text-xs font-medium text-[var(--text-secondary)] flex-1 truncate">
+                    {competition.name}
+                  </span>
                   <span className="text-[10px] text-[var(--text-muted)]">{teams.length} clubs</span>
                 </div>
 
@@ -144,7 +153,9 @@ export default function TeamsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className="text-[10px] text-[var(--text-secondary)]">{team.country}</span>
+                            {!sharedCountry && (
+                              <span className="text-[10px] text-[var(--text-secondary)]">{team.country}</span>
+                            )}
                             <TierBadge tier={team.tier} />
                             {team.score && team.score.matches_played > 0 && (
                               <span className="text-[10px] text-[var(--text-muted)]">
