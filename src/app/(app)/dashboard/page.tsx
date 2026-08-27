@@ -228,7 +228,10 @@ export default function DashboardPage() {
     // so nobody finds out beforehand who's been targeted.
     const { data: pupFeed } = await supabase
       .from('power_up_activations')
-      .select('*, players(name,color), target:target_player_id(name,color), teams(name,short_name,logo_url), fixtures(kickoff_time,status)')
+      .select(`*, players(name,color), target:target_player_id(name,color), teams(id,name,short_name,logo_url,primary_color,secondary_color),
+        fixtures(kickoff_time,status,home_team_id,away_team_id,
+          home_team:teams!fixtures_home_team_id_fkey(id,name,short_name,logo_url,primary_color,secondary_color),
+          away_team:teams!fixtures_away_team_id_fkey(id,name,short_name,logo_url,primary_color,secondary_color))`)
       .eq('league_id', lg.id)
       .order('activated_at', { ascending: false })
       .limit(60)
@@ -815,12 +818,12 @@ function PowerUpsFeed({ activations }: { activations: any[] }) {
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-      {items.map((item: any, i) => (
-        <div key={item.type === 'don' ? item.key : item.id} className={`flex items-center gap-2.5 px-3 py-2.5 ${i < items.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
-          <span className="text-base shrink-0">{item.type === 'don' ? '🎲' : '🔄'}</span>
-          <div className="flex-1 min-w-0">
-            {item.type === 'don' ? (
-              <>
+      {items.map((item: any, i) => {
+        if (item.type === 'don') {
+          return (
+            <div key={item.key} className={`flex items-center gap-2.5 px-3 py-2.5 ${i < items.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
+              <span className="text-base shrink-0">🎲</span>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs text-[var(--text-primary)] font-medium leading-snug">
                   {item.player?.name} doubled {item.team?.short_name || item.team?.name} for {formatMonthLabel(item.month)}
                 </p>
@@ -830,18 +833,30 @@ function PowerUpsFeed({ activations }: { activations: any[] }) {
                     <span className={item.result === 'ahead' ? 'text-[var(--green)]' : 'text-[var(--red)]'}> · {item.result === 'ahead' ? 'paying off' : 'backfiring'}</span>
                   )}
                 </p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-[var(--text-primary)] font-medium leading-snug">
-                  {item.players?.name} used Reverse on {item.target?.name}&apos;s {item.teams?.short_name || item.teams?.name}
-                </p>
-                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Revealed after full time</p>
-              </>
-            )}
+              </div>
+            </div>
+          )
+        }
+        const targeted = item.teams
+        const fx = item.fixtures
+        const opponent = fx && targeted ? (fx.home_team_id === targeted.id ? fx.away_team : fx.home_team) : null
+        return (
+          <div key={item.id} className={`flex items-center gap-2.5 px-3 py-2.5 ${i < items.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
+            <span className="text-base shrink-0">🔄</span>
+            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+              <TeamCrest team={targeted} size="xs" />
+              <span className="text-xs text-[var(--text-primary)] font-medium truncate">{targeted?.short_name || targeted?.name}</span>
+              {opponent && (
+                <>
+                  <span className="text-[9px] text-[var(--text-muted)] shrink-0">vs opponent</span>
+                  <TeamCrest team={opponent} size="xs" />
+                  <span className="text-xs text-[var(--text-primary)] font-medium truncate">{opponent.short_name || opponent.name}</span>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

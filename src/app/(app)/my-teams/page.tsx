@@ -351,13 +351,22 @@ function MineView({
   const [statsExpanded, setStatsExpanded] = useState(false)
 
   const now = new Date()
-  const availableMonths = Array.from({ length: 4 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-    return d.toISOString().substring(0, 7)
-  })
+  const currentMonthStr = now.toISOString().substring(0, 7)
+  // Extend all the way to the last month with any scheduled fixture in the
+  // league (i.e. the end of the season), not just a fixed few months out.
+  const lastSeasonMonth = upcomingFixtures.reduce((max, f) => {
+    const m = (f.kickoff_time as string | null)?.substring(0, 7)
+    return m && m > max ? m : max
+  }, currentMonthStr)
+  const availableMonths: string[] = []
+  for (let cursor = currentMonthStr; cursor <= lastSeasonMonth; ) {
+    availableMonths.push(cursor)
+    const [y, m] = cursor.split('-').map(Number)
+    const next = new Date(y, m, 1)
+    cursor = next.toISOString().substring(0, 7)
+  }
 
-  const currentMonth = now.toISOString().substring(0, 7)
-  const donAvailableThisMonth = !usedMonths.has(currentMonth)
+  const donAvailableThisMonth = !usedMonths.has(currentMonthStr)
 
   // Next upcoming fixture involving any of my teams
   const myNextFixture = upcomingFixtures.find(f =>
@@ -1320,33 +1329,25 @@ function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myU
               const ga = score?.goals_against ?? 0
               const gd = gf - ga
               return (
-                <div key={team.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-2 min-h-[44px]">
-                  <div className="flex items-center gap-2.5">
-                    <Link href={`/teams/${team.id}`} className="shrink-0">
-                      <TeamCrest team={team} size="sm" />
-                    </Link>
-                    <div className="flex-1 min-w-0">
-                      <Link href={`/teams/${team.id}`}>
-                        <p className="font-medium text-xs text-[var(--text-primary)] truncate hover:text-[var(--accent)] transition-colors">{team.name}</p>
-                      </Link>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {score && score.matches_played > 0 && (
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            <span className="text-emerald-400">{score.wins}W</span>{' '}
-                            <span className="text-amber-400">{score.draws}D</span>{' '}
-                            <span className="text-red-400">{score.losses}L</span>
-                            {' · '}
-                            <span className={gd >= 0 ? 'text-emerald-400' : 'text-red-400'}>{gd >= 0 ? `+${gd}` : gd}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="font-bold text-sm text-[var(--text-primary)]">{score?.total_points ?? 0}</div>
-                      <div className="text-[9px] text-[var(--text-secondary)]">pts</div>
-                    </div>
-                  </div>
-                </div>
+                <Link
+                  key={team.id}
+                  href={`/teams/${team.id}`}
+                  className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-2 min-h-[40px] hover:border-[var(--accent)]/40 transition-colors"
+                >
+                  <TeamCrest team={team} size="xs" />
+                  <span className="flex-1 min-w-0 font-medium text-xs text-[var(--text-primary)] truncate">{team.short_name || team.name}</span>
+                  <span className="text-[10px] shrink-0 tabular-nums">
+                    <span className="text-emerald-400">{score?.wins ?? 0}W</span>{' '}
+                    <span className="text-amber-400">{score?.draws ?? 0}D</span>{' '}
+                    <span className="text-red-400">{score?.losses ?? 0}L</span>
+                  </span>
+                  <span className={`text-[10px] w-8 text-right shrink-0 tabular-nums ${gd >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {gd >= 0 ? `+${gd}` : gd}
+                  </span>
+                  <span className="font-bold text-xs text-[var(--text-primary)] w-10 text-right shrink-0 tabular-nums">
+                    {score?.total_points ?? 0}<span className="text-[9px] text-[var(--text-secondary)] font-normal"> pts</span>
+                  </span>
+                </Link>
               )
             })}
           </div>
