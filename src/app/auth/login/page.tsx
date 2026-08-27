@@ -19,7 +19,11 @@ export default function LoginPage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
-      setError('Invalid username or password')
+      setError(
+        authError.message.toLowerCase().includes('invalid login credentials')
+          ? 'Invalid username or password.'
+          : `Couldn't sign in: ${authError.message}. Check your connection and try again.`
+      )
       setLoading(false)
       return
     }
@@ -53,10 +57,12 @@ export default function LoginPage() {
           <p className="text-sm text-[var(--text-secondary)] mt-1">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3" noValidate>
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Username</label>
+            <label htmlFor="login-username" className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Username</label>
             <input
+              id="login-username"
+              name="username"
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
@@ -64,24 +70,30 @@ export default function LoginPage() {
               autoComplete="username"
               autoCapitalize="none"
               required
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
               className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Password</label>
+            <label htmlFor="login-password" className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Password</label>
             <input
+              id="login-password"
+              name="password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete="current-password"
               required
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
               className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
 
           {error && (
-            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
+            <p id="login-error" role="alert" className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
           )}
 
           <button

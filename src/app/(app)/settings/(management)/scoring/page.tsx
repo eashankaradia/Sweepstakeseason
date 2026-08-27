@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { Toggle } from '@/components/ui/Toggle'
 import type { League, ScoringRule } from '@/lib/supabase/types'
 
 const GK_SETTINGS = [
@@ -124,16 +125,18 @@ export default function ScoringSettingsPage() {
                       <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">{description}</p>
                     </div>
                     {type === 'toggle' ? (
-                      <button
-                        onClick={() => saveGkSetting(key, !gkSettings[key])}
+                      <Toggle
+                        checked={!!gkSettings[key]}
+                        onChange={() => saveGkSetting(key, !gkSettings[key])}
                         disabled={saving === key}
-                        className={`w-9 h-5 rounded-full transition-colors shrink-0 ${gkSettings[key] ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}
-                      >
-                        <div className={`w-3.5 h-3.5 bg-white rounded-full mx-0.5 transition-transform ${gkSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </button>
+                        label={label}
+                      />
                     ) : (
                       <div className="flex items-center gap-2 shrink-0">
+                        <label htmlFor={`gk-${key}`} className="sr-only">{label}</label>
                         <input
+                          id={`gk-${key}`}
+                          name={key}
                           type="number"
                           value={gkSettings[key] ?? ''}
                           onChange={e => setGkSettings(prev => ({ ...prev, [key]: Number(e.target.value) }))}
@@ -164,12 +167,11 @@ function RuleRow({ rule, value, onChange, onSave, onToggle, saving }: {
           {rule.description && <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">{rule.description}</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <input type="number" value={value} onChange={e => onChange(e.target.value)} className="!w-16 text-center !py-1 text-sm" disabled={!rule.enabled} />
+          <label htmlFor={`rule-${rule.id}`} className="sr-only">{rule.rule_name} points</label>
+          <input id={`rule-${rule.id}`} name={`rule-${rule.id}`} type="number" value={value} onChange={e => onChange(e.target.value)} className="!w-16 text-center !py-1 text-sm" disabled={!rule.enabled} />
           <span className="text-xs text-[var(--text-secondary)]">pts</span>
           <Button size="sm" onClick={onSave} loading={saving} disabled={!rule.enabled} variant="ghost">Save</Button>
-          <button onClick={onToggle} className={`w-9 h-5 rounded-full transition-colors shrink-0 ${rule.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}>
-            <div className={`w-3.5 h-3.5 bg-white rounded-full mx-0.5 transition-transform ${rule.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-          </button>
+          <Toggle checked={rule.enabled} onChange={onToggle} label={`${rule.rule_name} enabled`} />
         </div>
       </div>
     </Card>
