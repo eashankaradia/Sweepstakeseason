@@ -45,11 +45,20 @@ function computeFormForTeams(teamIds: string[], matches: any[]): FormResult[] {
   const idSet = new Set(teamIds)
   const results: FormResult[] = []
   for (const m of matches) {
-    if (!idSet.has(m.home_team_id) && !idSet.has(m.away_team_id)) continue
-    if (m.home_score === m.away_score) results.push('D')
-    else if (idSet.has(m.home_team_id)) results.push(m.home_score > m.away_score ? 'W' : 'L')
-    else results.push(m.away_score > m.home_score ? 'W' : 'L')
-    if (results.length === 5) break
+    const homeIsMine = idSet.has(m.home_team_id)
+    const awayIsMine = idSet.has(m.away_team_id)
+    if (!homeIsMine && !awayIsMine) continue
+    const isDraw = m.home_score === m.away_score
+    // A player who owns both sides of a fixture gets two independent
+    // results out of it (one per club), not one — don't drop either.
+    if (homeIsMine) {
+      results.push(isDraw ? 'D' : m.home_score > m.away_score ? 'W' : 'L')
+      if (results.length === 5) break
+    }
+    if (awayIsMine) {
+      results.push(isDraw ? 'D' : m.away_score > m.home_score ? 'W' : 'L')
+      if (results.length === 5) break
+    }
   }
   return results
 }
@@ -833,7 +842,7 @@ function ResultDotsView({
       arr.push(isDraw ? 'D' : m.home_score > m.away_score ? 'W' : 'L')
       playerResults.set(homePlayer.id, arr)
     }
-    if (awayPlayer && awayPlayer.id !== homePlayer?.id) {
+    if (awayPlayer) {
       const arr = playerResults.get(awayPlayer.id) ?? []
       arr.push(isDraw ? 'D' : m.away_score > m.home_score ? 'W' : 'L')
       playerResults.set(awayPlayer.id, arr)
