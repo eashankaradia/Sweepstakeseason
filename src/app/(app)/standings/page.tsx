@@ -325,8 +325,6 @@ export default function StandingsPage() {
 
               {standings.map((entry, idx) => {
                 const isMe = entry.player.user_id === myUserId
-                const myIdx = standings.findIndex(s => s.player.user_id === myUserId)
-                const isRival = myIdx >= 0 && !isMe && Math.abs(idx - myIdx) === 1
                 const isExpandedPlayer = expanded.has(entry.player.id)
                 const medals = ['🥇', '🥈', '🥉']
                 const gdColor = entry.gd > 0 ? 'text-emerald-400' : entry.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
@@ -339,10 +337,10 @@ export default function StandingsPage() {
                 return (
                   <div
                     key={entry.player.id}
-                    className={`border-b border-[var(--border)] last:border-0 ${isRival ? 'border-l-2' : ''}`}
+                    className="border-b border-[var(--border)] last:border-0 border-l-2"
                     style={{
-                      background: isMe ? `${entry.player.color}08` : idx === 0 ? 'rgba(251,191,36,0.04)' : 'var(--bg-card)',
-                      borderLeftColor: isRival ? `${standings[myIdx].player.color}50` : undefined,
+                      background: `${entry.player.color}08`,
+                      borderLeftColor: `${entry.player.color}${isMe ? '' : '80'}`,
                     }}
                   >
                     <button
@@ -563,7 +561,8 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
               return (
                 <div
                   key={row.player_id}
-                  className={['flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)] last:border-0 min-h-[44px]', isMe ? 'bg-[var(--accent)]/5' : 'bg-[var(--bg-card)]'].join(' ')}
+                  className="flex items-center gap-2.5 px-3 py-2.5 border-b border-l-2 border-[var(--border)] last:border-b-0 min-h-[44px]"
+                  style={{ background: `${row.player_color}08`, borderLeftColor: `${row.player_color}${isMe ? '' : '80'}` }}
                 >
                   <span className={`text-[11px] font-bold w-4 text-center shrink-0 ${idx === 0 ? 'text-amber-400' : idx === rows.length - 1 ? 'text-red-400' : 'text-[var(--text-muted)]'}`}>
                     {idx + 1}

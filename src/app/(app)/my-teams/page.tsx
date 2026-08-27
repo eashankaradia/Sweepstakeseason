@@ -1288,8 +1288,8 @@ function AllPlayersView({ playerEntries, myUserId }: { playerEntries: any[]; myU
           key={player.id}
           className="rounded-xl border overflow-hidden"
           style={{
-            borderColor: isMe ? `${player.color}40` : 'var(--border)',
-            background: isMe ? `${player.color}08` : 'var(--bg-card)',
+            borderColor: `${player.color}${isMe ? '40' : '20'}`,
+            background: `${player.color}08`,
           }}
         >
           <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">

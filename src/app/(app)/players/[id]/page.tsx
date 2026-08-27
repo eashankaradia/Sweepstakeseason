@@ -247,7 +247,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-0.5">Upcoming</p>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
             {upcomingFixtures.map((f: any, i: number) => (
-              <FixturePill key={f.id} fixture={f} myTeamIds={teamIds} index={i} total={upcomingFixtures.length} />
+              <FixturePill key={f.id} fixture={f} myTeamIds={teamIds} playerColor={player.color} index={i} total={upcomingFixtures.length} />
             ))}
           </div>
         </div>
@@ -259,7 +259,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-0.5">Recent results</p>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
             {recentFixtures.map((f: any, i: number) => (
-              <FixturePill key={f.id} fixture={f} myTeamIds={teamIds} index={i} total={recentFixtures.length} />
+              <FixturePill key={f.id} fixture={f} myTeamIds={teamIds} playerColor={player.color} index={i} total={recentFixtures.length} />
             ))}
           </div>
         </div>
@@ -272,7 +272,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
   )
 }
 
-function FixturePill({ fixture, myTeamIds, index, total }: { fixture: any; myTeamIds: Set<string>; index: number; total: number }) {
+function FixturePill({ fixture, myTeamIds, playerColor, index, total }: { fixture: any; myTeamIds: Set<string>; playerColor: string; index: number; total: number }) {
   const isHome = myTeamIds.has(fixture.home_team_id)
   const isAway = myTeamIds.has(fixture.away_team_id)
   const myTeam = isHome ? fixture.home_team : fixture.away_team
@@ -282,17 +282,22 @@ function FixturePill({ fixture, myTeamIds, index, total }: { fixture: any; myTea
   const oppScore = isHome ? fixture.away_score : fixture.home_score
 
   let resultColor = ''
+  let won = false
   if (isCompleted && myScore != null && oppScore != null) {
-    resultColor = myScore > oppScore ? 'text-emerald-400' : myScore === oppScore ? 'text-amber-400' : 'text-red-400'
+    won = myScore > oppScore
+    resultColor = won ? 'text-emerald-400' : myScore === oppScore ? 'text-amber-400' : 'text-red-400'
   }
 
   return (
     <Link href={`/fixtures/${fixture.id}`}>
-      <div className={[
-        'flex items-center gap-2.5 px-3 py-2.5 min-h-[48px] hover:bg-[var(--bg-card-hover)] transition-colors',
-        index < total - 1 ? 'border-b border-[var(--border)]' : '',
-        isHome || isAway ? 'border-l-2 border-l-[var(--accent)]' : '',
-      ].join(' ')}>
+      <div
+        className={[
+          'flex items-center gap-2.5 px-3 py-2.5 min-h-[48px] hover:bg-[var(--bg-card-hover)] transition-colors',
+          index < total - 1 ? 'border-b border-[var(--border)]' : '',
+          isHome || isAway ? 'border-l-2 border-l-[var(--accent)]' : '',
+        ].join(' ')}
+        style={won ? { backgroundColor: `${playerColor}10` } : undefined}
+      >
         <TeamCrest team={myTeam} size="xs" />
         <span className="text-[10px] text-[var(--text-muted)] shrink-0">{isHome ? 'vs' : '@'}</span>
         <TeamCrest team={opp} size="xs" />
