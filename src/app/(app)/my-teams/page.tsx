@@ -92,7 +92,7 @@ export default function MyTeamsPage() {
           matches_played: scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0),
         } : null
         return { team, score }
-      }).filter(Boolean)
+      }).filter(Boolean).sort((a: any, b: any) => (b.score?.total_points ?? 0) - (a.score?.total_points ?? 0))
       const total = teams.reduce((sum: number, t: any) => sum + (t.score?.total_points ?? 0), 0)
       return { player, teams, total, isMe: player.user_id === uid }
     }).sort((a: any, b: any) => b.total - a.total)

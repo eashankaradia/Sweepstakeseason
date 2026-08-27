@@ -73,6 +73,7 @@ export default function DashboardPage() {
       { data: todayFix },
       { data: fullActivity },
       { data: weekFix },
+      { data: teamScores },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
@@ -99,11 +100,18 @@ export default function DashboardPage() {
         .lte('kickoff_time', `${weekEndStr}T23:59:59`)
         .order('kickoff_time')
         .limit(30),
+      supabase.from('team_scores').select('team_id, total_points').eq('league_id', lg.id),
     ])
+
+    const teamPtsMap = new Map<string, number>()
+    for (const ts of (teamScores ?? []) as any[]) {
+      teamPtsMap.set(ts.team_id, (teamPtsMap.get(ts.team_id) ?? 0) + (ts.total_points ?? 0))
+    }
 
     // Owner map: team_id → player[]
     const oMap = new Map<string, any[]>()
-    // Player → teams map (for leaderboard crests)
+    // Player → teams map (for leaderboard crests), each player's teams kept
+    // sorted by points earned so far — best performer first, everywhere.
     const playerTeamsMap = new Map<string, any[]>()
     for (const a of (assignments ?? []) as any[]) {
       if (a.players && a.team_id) {
@@ -116,6 +124,9 @@ export default function DashboardPage() {
         if (!arr.find((t: any) => t.id === a.teams.id)) arr.push(a.teams)
         playerTeamsMap.set(a.player_id, arr)
       }
+    }
+    for (const arr of playerTeamsMap.values()) {
+      arr.sort((a: any, b: any) => (teamPtsMap.get(b.id) ?? 0) - (teamPtsMap.get(a.id) ?? 0))
     }
     setOwnerMap(oMap)
 
