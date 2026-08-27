@@ -263,14 +263,16 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        {/* Power-up indicators row */}
-        {powerUps.length > 0 && (
+        {/* Power-up indicators row — Double or Nothing only. Reverse stays
+            hidden until the match completes and it resolves to "applied",
+            so nobody finds out who's been targeted beforehand. */}
+        {powerUps.filter((pu: any) => pu.power_up_type === 'double_or_nothing').length > 0 && (
           <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-wrap gap-1.5">
-            {powerUps.map((pu: any) => (
+            {powerUps.filter((pu: any) => pu.power_up_type === 'double_or_nothing').map((pu: any) => (
               <div key={pu.id} className="flex items-center gap-1 text-[10px] bg-[var(--accent)]/10 text-[var(--accent)] px-2 py-0.5 rounded-full">
-                <span>{pu.power_up_type === 'double_or_nothing' ? '🎲' : '🔄'}</span>
+                <span>🎲</span>
                 <span className="font-medium">{pu.players?.name}</span>
-                <span className="text-[var(--text-muted)]">· {pu.power_up_type === 'double_or_nothing' ? 'D-o-N' : 'Reverse'}</span>
+                <span className="text-[var(--text-muted)]">· D-o-N</span>
               </div>
             ))}
           </div>
