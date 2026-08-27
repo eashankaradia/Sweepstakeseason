@@ -6,7 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
@@ -20,14 +20,18 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const [competitions, setCompetitions] = useState<any[]>([])
   const [insights, setInsights] = useState<{ standing: any; elo: any } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { load() }, [id])
 
   async function load() {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: t } = await supabase.from('teams').select('*').eq('id', id).maybeSingle()
     if (!t) { setLoading(false); return }
@@ -63,6 +67,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     fetchInsights(id)
 
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }
 
   async function fetchInsights(teamId: string) {
@@ -73,6 +81,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   if (loading) return <AppShell title="Team" backHref="/teams"><PageLoader /></AppShell>
+  if (error) return <AppShell title="Team" backHref="/teams"><ErrorState onRetry={load} /></AppShell>
   if (!team) return <AppShell title="Team" backHref="/teams"><EmptyState icon="⚽" title="Team not found" /></AppShell>
 
   const recentResults = fixtures.filter(f => f.status === 'completed').slice(0, 5)

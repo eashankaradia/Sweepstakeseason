@@ -9,7 +9,7 @@ import { TabBar } from '@/components/ui/TabBar'
 import { FilterChip } from '@/components/ui/FilterChip'
 import { OwnerStack } from '@/components/ui/OwnerStack'
 import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import type { Competition, Team, Fixture } from '@/lib/supabase/types'
 import Link from 'next/link'
 
@@ -22,6 +22,7 @@ export default function FixturesPage() {
   const [ownerMap, setOwnerMap] = useState<Map<string, Player[]>>(new Map())
   const [myTeamIds, setMyTeamIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'results' | 'calendar'>('upcoming')
   const [activeComp, setActiveComp] = useState('all')
   const [myTeamsOnly, setMyTeamsOnly] = useState(false)
@@ -33,8 +34,11 @@ export default function FixturesPage() {
 
   async function load() {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: authData } = await supabase.auth.getUser()
     const uid = authData?.user?.id
@@ -84,6 +88,10 @@ export default function FixturesPage() {
     }
 
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }
 
   const filtered = fixtures.filter(f => {
@@ -99,6 +107,8 @@ export default function FixturesPage() {
   const groups = groupByDate(filtered, activeTab === 'results')
 
   if (loading) return <AppShell title="Fixtures"><PageLoader /></AppShell>
+
+  if (error) return <AppShell title="Fixtures"><ErrorState onRetry={load} /></AppShell>
 
   return (
     <AppShell title="Fixtures">

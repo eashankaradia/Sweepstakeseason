@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
 type FormResult = 'W' | 'D' | 'L'
@@ -99,6 +99,7 @@ export default function StandingsPage() {
   const [league, setLeague] = useState<any>(null)
   const [hasDraft, setHasDraft] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [tab, setTab] = useState<'overall' | 'monthly' | 'insights'>('overall')
   const [insightsTab, setInsightsTab] = useState<'tables' | 'charts' | 'heatmap'>('tables')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -111,8 +112,11 @@ export default function StandingsPage() {
 
   async function load() {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const [{ data: lg }, { data: authData }] = await Promise.all([
       supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle(),
@@ -230,6 +234,10 @@ export default function StandingsPage() {
     }
 
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }
 
   function toggleExpanded(playerId: string) {
@@ -242,6 +250,8 @@ export default function StandingsPage() {
   }
 
   if (loading) return <AppShell title="Standings"><PageLoader /></AppShell>
+
+  if (error) return <AppShell title="Standings"><ErrorState onRetry={load} /></AppShell>
 
   if (!league) {
     return (

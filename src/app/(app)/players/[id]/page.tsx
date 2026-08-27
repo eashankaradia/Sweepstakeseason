@@ -8,7 +8,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { StatTile } from '@/components/ui/StatTile'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
 function posOrdinal(n: number) {
@@ -30,14 +30,18 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
   const [position, setPosition] = useState<number | null>(null)
   const [totalPlayers, setTotalPlayers] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { load() }, [id])
 
   async function load() {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: p } = await supabase.from('players').select('*').eq('id', id).maybeSingle()
     if (!p) { setLoading(false); return }
@@ -93,9 +97,14 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
     }
 
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }
 
   if (loading) return <AppShell title="Player" backHref="/standings"><PageLoader /></AppShell>
+  if (error) return <AppShell title="Player" backHref="/standings"><ErrorState onRetry={load} /></AppShell>
   if (!player) return <AppShell title="Player" backHref="/standings"><EmptyState icon="👤" title="Player not found" /></AppShell>
 
   const teamIds = new Set(teams.map((t: any) => t.id))

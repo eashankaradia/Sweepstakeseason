@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
 function formatMonth(ym: string) {
@@ -48,15 +48,19 @@ export default function MyTeamsPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [tab, setTab] = useState<'mine' | 'all' | 'calendar'>('mine')
   const [donTeamId, setDonTeamId] = useState<string | null>(null)
   const [donMonth, setDonMonth] = useState<string>('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    setError(false)
     const supabase = createClient()
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: authData } = await supabase.auth.getUser()
     const uid = authData?.user?.id
@@ -124,6 +128,10 @@ export default function MyTeamsPage() {
     }
 
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
@@ -204,6 +212,8 @@ export default function MyTeamsPage() {
   }
 
   if (loading) return <AppShell title="My Teams"><PageLoader /></AppShell>
+
+  if (error) return <AppShell title="My Teams"><ErrorState onRetry={loadData} /></AppShell>
 
   if (!data?.league) {
     return (
