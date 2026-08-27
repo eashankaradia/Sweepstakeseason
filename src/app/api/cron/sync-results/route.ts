@@ -92,6 +92,9 @@ export async function GET(request: Request) {
           const d = await r.json()
           sdbEvents = d.events ?? []
           warnings.push(`SportsDB ${sdbId} returned ${sdbEvents.length} events for ${currentSeason()}`)
+          for (const ev of sdbEvents) {
+            warnings.push(`  ${ev.dateEvent} ${ev.strHomeTeam} vs ${ev.strAwayTeam} [${ev.strStatus}]`)
+          }
         } else {
           warnings.push(`SportsDB ${sdbId} HTTP ${r.status}`)
         }
