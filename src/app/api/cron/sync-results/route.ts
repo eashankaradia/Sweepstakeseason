@@ -85,21 +85,38 @@ export async function GET(request: Request) {
     const warnings: string[] = []
 
     for (const { sdbId, fixtures } of slugGroups.values()) {
-      let sdbEvents: any[] = []
+      const eventsById = new Map<string, any>()
+
       try {
         const r = await fetch(`${SPORTSDB_BASE}/eventsseason.php?id=${sdbId}&s=${currentSeason()}`)
         if (r.ok) {
           const d = await r.json()
-          sdbEvents = d.events ?? []
-          warnings.push(`SportsDB ${sdbId} returned ${sdbEvents.length} events for ${currentSeason()}`)
-          for (const ev of sdbEvents) {
-            warnings.push(`  ${ev.dateEvent} ${ev.strHomeTeam} vs ${ev.strAwayTeam} [${ev.strStatus}]`)
-          }
+          for (const ev of d.events ?? []) eventsById.set(ev.idEvent, ev)
+          warnings.push(`SportsDB ${sdbId} eventsseason returned ${(d.events ?? []).length} events`)
         } else {
-          warnings.push(`SportsDB ${sdbId} HTTP ${r.status}`)
+          warnings.push(`SportsDB ${sdbId} eventsseason HTTP ${r.status}`)
         }
       } catch (e: any) {
-        warnings.push(`SportsDB ${sdbId} fetch error: ${e?.message}`)
+        warnings.push(`SportsDB ${sdbId} eventsseason fetch error: ${e?.message}`)
+      }
+
+      try {
+        const r = await fetch(`${SPORTSDB_BASE}/eventspastleague.php?id=${sdbId}`)
+        if (r.ok) {
+          const d = await r.json()
+          for (const ev of d.events ?? []) eventsById.set(ev.idEvent, ev)
+          warnings.push(`SportsDB ${sdbId} eventspastleague returned ${(d.events ?? []).length} events`)
+        } else {
+          warnings.push(`SportsDB ${sdbId} eventspastleague HTTP ${r.status}`)
+        }
+      } catch (e: any) {
+        warnings.push(`SportsDB ${sdbId} eventspastleague fetch error: ${e?.message}`)
+      }
+
+      const sdbEvents = [...eventsById.values()]
+      warnings.push(`SportsDB ${sdbId} merged total ${sdbEvents.length} unique events`)
+      for (const ev of sdbEvents) {
+        warnings.push(`  ${ev.dateEvent} ${ev.strHomeTeam} vs ${ev.strAwayTeam} [${ev.strStatus}]`)
       }
 
       const FINISHED_STATUSES = new Set(['Match Finished', 'FT', 'AET', 'Penalties', 'FT_PEN'])
