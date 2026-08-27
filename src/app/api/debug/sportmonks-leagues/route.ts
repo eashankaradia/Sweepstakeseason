@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
   try {
     const r = await fetch(
-      `${SPORTMONKS_BASE}/leagues/search/Premier League?api_token=${token}&include=country`
+      `${SPORTMONKS_BASE}/leagues?api_token=${token}&include=country`
     )
     const data = await r.json()
     return NextResponse.json({ status: r.status, data })
