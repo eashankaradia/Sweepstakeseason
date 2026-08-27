@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
@@ -13,7 +13,8 @@ import Link from 'next/link'
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
 
-export default function TeamDetailPage({ params }: { params: { id: string } }) {
+export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [team, setTeam] = useState<any>(null)
   const [owners, setOwners] = useState<any[]>([])
   const [teamScore, setTeamScore] = useState<any>(null)
@@ -25,14 +26,14 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  useEffect(() => { load() }, [params.id])
+  useEffect(() => { load() }, [id])
 
   async function load() {
     setLoading(true)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
 
-    const { data: t } = await supabase.from('teams').select('*').eq('id', params.id).maybeSingle()
+    const { data: t } = await supabase.from('teams').select('*').eq('id', id).maybeSingle()
     if (!t) { setLoading(false); return }
     setTeam(t)
 
@@ -40,22 +41,22 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
       supabase.from('player_team_assignments')
         .select('players(id,name,color,user_id)')
         .eq('league_id', leagueId)
-        .eq('team_id', params.id),
+        .eq('team_id', id),
       supabase.from('team_scores')
         .select('*')
         .eq('league_id', leagueId)
-        .eq('team_id', params.id)
+        .eq('team_id', id)
         .maybeSingle(),
       supabase.from('fixtures')
         .select(`*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
         .eq('league_id', leagueId)
-        .or(`home_team_id.eq.${params.id},away_team_id.eq.${params.id}`)
+        .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
         .order('kickoff_time', { ascending: false })
         .limit(20),
       supabase.from('team_competitions')
         .select('competitions(*)')
         .eq('league_id', leagueId)
-        .eq('team_id', params.id),
+        .eq('team_id', id),
     ])
 
     setOwners(((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean))
@@ -73,7 +74,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
       }
     }
 
-    fetchInsights(params.id)
+    fetchInsights(id)
 
     setLoading(false)
   }
@@ -108,7 +109,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
   const recentResults = fixtures.filter(f => f.status === 'completed').slice(0, 5)
   const upcoming = fixtures.filter(f => f.status === 'scheduled' || f.status === 'live').reverse().slice(0, 5)
   const form = recentResults.map(f => {
-    const isHome = f.home_team_id === params.id
+    const isHome = f.home_team_id === id
     const myScore = isHome ? f.home_score : f.away_score
     const oppScore = isHome ? f.away_score : f.home_score
     if (myScore > oppScore) return 'W'
@@ -281,7 +282,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
         <div className="mb-3">
           <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Upcoming</p>
           <div className="space-y-2">
-            {upcoming.map(f => <FixtureRow key={f.id} fixture={f} teamId={params.id} />)}
+            {upcoming.map(f => <FixtureRow key={f.id} fixture={f} teamId={id} />)}
           </div>
         </div>
       )}
@@ -291,7 +292,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
         <div className="mb-3">
           <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Recent results</p>
           <div className="space-y-2">
-            {recentResults.map(f => <FixtureRow key={f.id} fixture={f} teamId={params.id} />)}
+            {recentResults.map(f => <FixtureRow key={f.id} fixture={f} teamId={id} />)}
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
@@ -20,7 +20,8 @@ type MatchEvent = {
   period: number
 }
 
-export default function MatchCentrePage({ params }: { params: { id: string } }) {
+export default function MatchCentrePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [fixture, setFixture] = useState<any>(null)
   const [homeOwner, setHomeOwner] = useState<Player[]>([])
   const [awayOwner, setAwayOwner] = useState<Player[]>([])
@@ -43,7 +44,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     const { data: fix } = await supabase
       .from('fixtures')
       .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
-      .eq('id', params.id)
+      .eq('id', id)
       .maybeSingle()
 
     if (!fix) { setLoading(false); return }
@@ -58,7 +59,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
         .eq('league_id', fix.league_id),
       supabase.from('power_up_activations')
         .select('*, players(name,color)')
-        .eq('fixture_id', params.id)
+        .eq('fixture_id', id)
         .eq('status', 'pending'),
       supabase.from('players').select('id,name,color,user_id').eq('league_id', fix.league_id),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', fix.league_id),
@@ -100,7 +101,7 @@ export default function MatchCentrePage({ params }: { params: { id: string } }) 
     if (fix.external_id && fix.competition?.espn_slug) {
       fetchESPN(fix.competition.espn_slug, fix.external_id)
     }
-  }, [params.id])
+  }, [id])
 
   const fetchESPN = async (slug: string, externalId: string) => {
     const eventId = externalId.split(':').pop()

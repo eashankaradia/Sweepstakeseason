@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
@@ -19,7 +19,8 @@ function posOrdinal(n: number) {
 
 type FormResult = 'W' | 'D' | 'L'
 
-export default function PlayerDetailPage({ params }: { params: { id: string } }) {
+export default function PlayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [player, setPlayer] = useState<any>(null)
   const [score, setScore] = useState<any>(null)
   const [teams, setTeams] = useState<any[]>([])
@@ -31,14 +32,14 @@ export default function PlayerDetailPage({ params }: { params: { id: string } })
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  useEffect(() => { load() }, [params.id])
+  useEffect(() => { load() }, [id])
 
   async function load() {
     setLoading(true)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
 
-    const { data: p } = await supabase.from('players').select('*').eq('id', params.id).maybeSingle()
+    const { data: p } = await supabase.from('players').select('*').eq('id', id).maybeSingle()
     if (!p) { setLoading(false); return }
     setPlayer(p)
 
@@ -48,20 +49,20 @@ export default function PlayerDetailPage({ params }: { params: { id: string } })
       { data: assignments },
       { data: pups },
     ] = await Promise.all([
-      supabase.from('player_scores').select('*').eq('league_id', leagueId).eq('player_id', params.id).maybeSingle(),
+      supabase.from('player_scores').select('*').eq('league_id', leagueId).eq('player_id', id).maybeSingle(),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', leagueId).order('total_points', { ascending: false }),
       supabase.from('player_team_assignments')
         .select('*, teams(*, team_competitions(competition_id, competitions(*)))')
         .eq('league_id', leagueId)
-        .eq('player_id', params.id),
-      supabase.from('power_up_activations').select('*').eq('league_id', leagueId).eq('player_id', params.id),
+        .eq('player_id', id),
+      supabase.from('power_up_activations').select('*').eq('league_id', leagueId).eq('player_id', id),
     ])
 
     setScore(playerScore)
     setPowerUps(pups ?? [])
 
     const sorted = (allScores ?? []).sort((a: any, b: any) => b.total_points - a.total_points)
-    const pos = sorted.findIndex((s: any) => s.player_id === params.id)
+    const pos = sorted.findIndex((s: any) => s.player_id === id)
     setPosition(pos >= 0 ? pos + 1 : null)
     setTotalPlayers(sorted.length)
 
