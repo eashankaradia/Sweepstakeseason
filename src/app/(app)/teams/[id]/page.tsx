@@ -11,8 +11,6 @@ import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
 
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
-
 export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [team, setTeam] = useState<any>(null)
@@ -20,8 +18,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const [teamScore, setTeamScore] = useState<any>(null)
   const [fixtures, setFixtures] = useState<any[]>([])
   const [competitions, setCompetitions] = useState<any[]>([])
-  const [espnTeam, setEspnTeam] = useState<any>(null)
-  const [espnNews, setEspnNews] = useState<any[]>([])
   const [insights, setInsights] = useState<{ standing: any; elo: any } | null>(null)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
@@ -64,16 +60,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     setFixtures((fix ?? []) as any[])
     setCompetitions((tc ?? []).map((r: any) => r.competitions).filter(Boolean))
 
-    // ESPN data if available
-    if (t.espn_team_id) {
-      const domesticComp = ((tc ?? []) as any[])
-        .map((r: any) => r.competitions)
-        .find((c: any) => c?.competition_type === 'domestic_league' && c?.espn_slug)
-      if (domesticComp?.espn_slug) {
-        fetchESPN(domesticComp.espn_slug, t.espn_team_id)
-      }
-    }
-
     fetchInsights(id)
 
     setLoading(false)
@@ -83,23 +69,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     try {
       const res = await fetch(`/api/teams/${teamId}/insights`)
       if (res.ok) setInsights(await res.json())
-    } catch { /* ignore */ }
-  }
-
-  async function fetchESPN(slug: string, espnTeamId: string) {
-    try {
-      const [teamRes, newsRes] = await Promise.all([
-        fetch(`${ESPN_BASE}/${slug}/teams/${espnTeamId}`),
-        fetch(`${ESPN_BASE}/${slug}/news?team=${espnTeamId}&limit=5`),
-      ])
-      if (teamRes.ok) {
-        const td = await teamRes.json()
-        setEspnTeam(td.team)
-      }
-      if (newsRes.ok) {
-        const nd = await newsRes.json()
-        setEspnNews(nd.articles ?? [])
-      }
     } catch { /* ignore */ }
   }
 
@@ -116,9 +85,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     if (myScore === oppScore) return 'D'
     return 'L'
   }).reverse()
-
-  const espnRecord = espnTeam?.record?.items?.find((r: any) => r.type === 'total') ??
-    espnTeam?.record?.items?.[0]
 
   return (
     <AppShell title={team.short_name || team.name} backHref="/teams">
@@ -269,14 +235,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* ESPN record (if available) */}
-      {espnRecord && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 mb-3 flex items-center gap-2">
-          <span className="text-[10px] text-[var(--text-muted)]">Season record</span>
-          <span className="text-xs font-semibold text-[var(--text-primary)] ml-auto">{espnRecord.summary}</span>
-        </div>
-      )}
-
       {/* Upcoming fixtures */}
       {upcoming.length > 0 && (
         <div className="mb-3">
@@ -297,30 +255,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* ESPN News */}
-      {espnNews.length > 0 && (
-        <div className="mb-3">
-          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Latest News</p>
-          <div className="space-y-2">
-            {espnNews.map((article: any, i: number) => (
-              <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
-                {article.images?.[0]?.url && (
-                  <img
-                    src={article.images[0].url}
-                    alt=""
-                    className="w-full h-28 object-cover rounded-lg mb-2"
-                  />
-                )}
-                <p className="text-xs font-semibold text-[var(--text-primary)] leading-snug">{article.headline}</p>
-                {article.description && (
-                  <p className="text-[10px] text-[var(--text-secondary)] mt-1 line-clamp-2">{article.description}</p>
-                )}
-                <p className="text-[9px] text-[var(--text-muted)] mt-1.5">{article.published ? new Date(article.published).toLocaleDateString('en-GB') : ''}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </AppShell>
   )
 }

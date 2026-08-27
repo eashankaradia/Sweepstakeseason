@@ -9,15 +9,12 @@ import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { formatDateTime } from '@/lib/utils'
 
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
-
 type Player = { id: string; name: string; color: string }
 type MatchEvent = {
   minute: string
   type: 'goal' | 'own_goal' | 'yellow_card' | 'red_card' | 'substitution' | 'var' | 'other'
   text: string
-  teamId: string | null
-  period: number
+  isHome: boolean | null
 }
 
 export default function MatchCentrePage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,13 +24,12 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const [awayOwner, setAwayOwner] = useState<Player[]>([])
   const [homeScore, setHomeScore] = useState<any>(null)
   const [awayScore, setAwayScore] = useState<any>(null)
-  const [espnData, setEspnData] = useState<any>(null)
+  const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([])
   const [powerUps, setPowerUps] = useState<any[]>([])
   const [allOwners, setAllOwners] = useState<Map<string, Player>>(new Map())
   const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [liveLoading, setLiveLoading] = useState(false)
   const supabase = createClient()
 
   const loadFixture = useCallback(async () => {
@@ -98,34 +94,21 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
 
     setLoading(false)
 
-    if (fix.external_id && fix.competition?.espn_slug) {
-      fetchESPN(fix.competition.espn_slug, fix.external_id)
+    if (fix.status === 'completed') {
+      fetchEvents(id)
     }
   }, [id])
 
-  const fetchESPN = async (slug: string, externalId: string) => {
-    const eventId = externalId.split(':').pop()
-    if (!eventId) return
-    setLiveLoading(true)
+  const fetchEvents = async (fixtureId: string) => {
     try {
-      const res = await fetch(`${ESPN_BASE}/${slug}/summary?event=${eventId}`)
-      if (res.ok) setEspnData(await res.json())
+      const res = await fetch(`/api/fixtures/${fixtureId}/events`)
+      if (!res.ok) return
+      const { events } = await res.json()
+      setMatchEvents(parseBbsEvents(events ?? []))
     } catch { /* ignore */ }
-    setLiveLoading(false)
   }
 
   useEffect(() => { loadFixture() }, [loadFixture])
-
-  // Auto-refresh every 30s when live
-  useEffect(() => {
-    if (!fixture || fixture.status !== 'live') return
-    const id = setInterval(() => {
-      if (fixture.external_id && fixture.competition?.espn_slug) {
-        fetchESPN(fixture.competition.espn_slug, fixture.external_id)
-      }
-    }, 30000)
-    return () => clearInterval(id)
-  }, [fixture?.status, fixture?.external_id, fixture?.competition?.espn_slug])
 
   if (loading) return <AppShell title="Match" backHref="/fixtures"><PageLoader /></AppShell>
   if (!fixture) return <AppShell title="Match" backHref="/fixtures"><EmptyState icon="⚽" title="Match not found" /></AppShell>
@@ -133,12 +116,6 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const isLive = fixture.status === 'live'
   const isCompleted = fixture.status === 'completed'
   const isUpcoming = !isLive && !isCompleted
-
-  const espnComp = espnData?.header?.competitions?.[0]
-  const espnHome = espnComp?.competitors?.find((c: any) => c.homeAway === 'home')
-  const espnAway = espnComp?.competitors?.find((c: any) => c.homeAway === 'away')
-  const espnStatus = espnComp?.status?.type?.description ?? ''
-  const espnClock = espnComp?.status?.displayClock
 
   // Points this fixture awards
   const hScore = isCompleted || isLive ? (fixture.home_score ?? 0) : null
@@ -149,13 +126,6 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   // Giant Killer: only in domestic leagues, check if applicable
   const compType = (fixture.competition as any)?.competition_type
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
-
-  // Parse full match timeline from ESPN plays
-  const matchEvents = parseMatchEvents(espnData?.plays ?? [], espnHome?.id, espnAway?.id)
-
-  // Scoring plays (goals only from ESPN scoring plays as fallback)
-  const scoringPlays = espnData?.scoringPlays ?? []
-  const stats = espnData?.boxscore?.teams ?? []
 
   // Power-up projections
   const homeDon = powerUps.find(p => p.power_up_type === 'double_or_nothing' && p.team_id === fixture.home_team_id)
@@ -175,10 +145,7 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
         {isLive && (
           <div className="ml-auto flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <Badge variant="danger" className="text-[9px]">
-              {espnClock ? `${espnClock}` : 'LIVE'}
-            </Badge>
-            {liveLoading && <span className="text-[9px] text-[var(--text-muted)]">↻</span>}
+            <Badge variant="danger" className="text-[9px]">LIVE</Badge>
           </div>
         )}
         {!isLive && (
@@ -229,7 +196,6 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             {isCompleted && <div className="text-[9px] text-[var(--text-muted)] mt-1">FT</div>}
-            {isLive && espnStatus && <div className="text-[9px] text-red-400 font-medium mt-1">{espnStatus}</div>}
           </div>
 
           {/* Away */}
@@ -310,47 +276,14 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      {/* Match Timeline (from ESPN plays - most informative) */}
+      {/* Match Timeline (goals/cards from BigBallsData, completed matches only) */}
       {matchEvents.length > 0 && (
         <MatchTimeline
           events={matchEvents}
-          homeTeamId={espnHome?.id}
-          awayTeamId={espnAway?.id}
           homeName={fixture.home_team?.short_name || fixture.home_team?.name}
           awayName={fixture.away_team?.short_name || fixture.away_team?.name}
         />
       )}
-
-      {/* Fall back to scoring plays if no full timeline */}
-      {matchEvents.length === 0 && scoringPlays.length > 0 && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden mb-3">
-          <div className="px-3 py-2 border-b border-[var(--border)]">
-            <p className="text-xs font-semibold text-[var(--text-primary)]">Goals</p>
-          </div>
-          <div className="divide-y divide-[var(--border)]">
-            {scoringPlays.map((play: any, i: number) => {
-              const isHome = play.team?.id === espnHome?.id
-              return (
-                <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs">
-                  <span className="text-[var(--text-muted)] w-8 shrink-0 text-center tabular-nums">
-                    {play.clock?.displayValue ?? ''}′
-                  </span>
-                  <span className="text-[11px]">⚽</span>
-                  <span className={`font-medium flex-1 truncate ${isHome ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                    {play.text ?? play.participants?.[0]?.athlete?.displayName ?? 'Goal'}
-                  </span>
-                  <span className={`text-[10px] font-bold shrink-0 ${isHome ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {isHome ? (fixture.home_team?.short_name ?? 'H') : (fixture.away_team?.short_name ?? 'A')}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Match stats */}
-      {stats.length > 0 && <MatchStats stats={stats} homeName={fixture.home_team?.name} awayName={fixture.away_team?.name} />}
 
       {/* Team season stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
@@ -467,11 +400,9 @@ function OddsBox({ label, value }: { label: string; value: number | null | undef
 }
 
 function MatchTimeline({
-  events, homeTeamId, awayTeamId, homeName, awayName,
+  events, homeName, awayName,
 }: {
   events: MatchEvent[]
-  homeTeamId: string | undefined
-  awayTeamId: string | undefined
   homeName: string
   awayName: string
 }) {
@@ -482,7 +413,7 @@ function MatchTimeline({
       </div>
       <div className="divide-y divide-[var(--border)]">
         {events.map((evt, i) => {
-          const isHome = evt.teamId && evt.teamId === homeTeamId
+          const isHome = evt.isHome === true
           const icon = eventTypeIcon(evt.type)
           return (
             <div key={i} className={`flex items-center gap-2 px-3 py-2 text-xs ${isHome ? '' : 'flex-row-reverse'}`}>
@@ -535,65 +466,6 @@ function TeamStatCard({ team, score, owners }: { team: any; score: any; owners: 
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-function MatchStats({ stats, homeName, awayName }: { stats: any[]; homeName: string; awayName: string }) {
-  const statKeys = [
-    { key: 'possessionPct', label: 'Possession', isPercent: true },
-    { key: 'totalShots', label: 'Shots' },
-    { key: 'shotsOnTarget', label: 'On Target' },
-    { key: 'saves', label: 'Saves' },
-    { key: 'fouls', label: 'Fouls' },
-    { key: 'yellowCards', label: 'Yellows' },
-    { key: 'cornerKicks', label: 'Corners' },
-  ]
-
-  const homeStats: Record<string, any> = {}
-  const awayStats: Record<string, any> = {}
-  for (const team of stats) {
-    const isHome = team.homeAway === 'home'
-    for (const stat of (team.statistics ?? [])) {
-      if (isHome) homeStats[stat.name] = stat.displayValue
-      else awayStats[stat.name] = stat.displayValue
-    }
-  }
-
-  const displayStats = statKeys.filter(s => homeStats[s.key] != null || awayStats[s.key] != null)
-  if (displayStats.length === 0) return null
-
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden mb-3">
-      <div className="px-3 py-2 border-b border-[var(--border)]">
-        <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
-          <span>{homeName}</span>
-          <span>Statistics</span>
-          <span>{awayName}</span>
-        </div>
-      </div>
-      <div className="px-3 py-2 space-y-2.5">
-        {displayStats.map(({ key, label }) => {
-          const hv = homeStats[key] ?? '0'
-          const av = awayStats[key] ?? '0'
-          const hn = parseFloat(hv) || 0
-          const an = parseFloat(av) || 0
-          const total = hn + an
-          const homePct = total > 0 ? (hn / total) * 100 : 50
-          return (
-            <div key={key}>
-              <div className="flex items-center justify-between text-[10px] mb-1">
-                <span className="font-semibold text-[var(--text-primary)] w-8">{hv}</span>
-                <span className="text-[var(--text-muted)]">{label}</span>
-                <span className="font-semibold text-[var(--text-primary)] w-8 text-right">{av}</span>
-              </div>
-              <div className="h-1 rounded-full bg-[var(--border)] flex overflow-hidden">
-                <div className="h-full bg-[var(--accent)] rounded-l-full transition-all" style={{ width: `${homePct}%` }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -729,25 +601,32 @@ function projectedPtsWithDon(rawPts: number, don: any | undefined): number {
   return -3
 }
 
-function parseMatchEvents(plays: any[], homeId?: string, awayId?: string): MatchEvent[] {
+function parseBbsEvents(raw: any[]): MatchEvent[] {
   const events: MatchEvent[] = []
-  for (const play of plays ?? []) {
-    const typeText = ((play.type?.text ?? play.type?.name ?? '') as string).toLowerCase()
-    const minute = play.clock?.displayValue ?? ''
-    const text = play.text ?? play.participants?.[0]?.athlete?.displayName ?? ''
-    const teamId = play.team?.id ? String(play.team.id) : null
-    const period = play.period?.number ?? 1
+  for (const evt of raw ?? []) {
+    const typeText = ((evt.type ?? evt.event_type ?? evt.eventType ?? '') as string).toLowerCase()
+    const minute = String(evt.minute ?? evt.min ?? evt.clock ?? evt.time ?? '')
+    const text = evt.text ?? evt.description ?? evt.player_name ?? evt.player ?? evt.detail ?? ''
+
+    const side = (evt.side ?? evt.team_side ?? evt.teamSide ?? '').toString().toLowerCase()
+    let isHome: boolean | null = null
+    if (typeof evt.isHome === 'boolean') isHome = evt.isHome
+    else if (typeof evt.is_home === 'boolean') isHome = evt.is_home
+    else if (side === 'home') isHome = true
+    else if (side === 'away') isHome = false
+    else if (evt.team === 'home') isHome = true
+    else if (evt.team === 'away') isHome = false
 
     let type: MatchEvent['type'] = 'other'
     if (typeText.includes('goal') && typeText.includes('own')) type = 'own_goal'
-    else if (typeText.includes('goal') || (play.scoringPlay === true)) type = 'goal'
+    else if (typeText.includes('goal')) type = 'goal'
     else if (typeText.includes('red')) type = 'red_card'
     else if (typeText.includes('yellow')) type = 'yellow_card'
     else if (typeText.includes('sub')) type = 'substitution'
     else if (typeText.includes('var')) type = 'var'
     else continue
 
-    events.push({ minute, type, text, teamId, period })
+    events.push({ minute, type, text, isHome })
   }
   return events
 }
