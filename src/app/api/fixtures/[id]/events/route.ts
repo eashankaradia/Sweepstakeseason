@@ -22,7 +22,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!r.ok) return NextResponse.json({ events: [] })
 
     const raw = await r.json()
-    const events = Array.isArray(raw) ? raw : (raw.events ?? raw.data ?? [])
+    // BigBallsData wraps responses as { data, meta, error }; some endpoints
+    // instead return the payload directly or under a top-level `events` key.
+    const unwrapped = Array.isArray(raw) ? raw : (raw?.data?.events ?? raw?.events ?? raw?.data ?? [])
+    const events = Array.isArray(unwrapped) ? unwrapped : []
     return NextResponse.json({ events })
   } catch {
     return NextResponse.json({ events: [] })
