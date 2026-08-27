@@ -15,6 +15,7 @@ type FormResult = 'W' | 'D' | 'L'
 type StandingEntry = {
   player: { id: string; name: string; color: string; user_id: string | null }
   totalPoints: number
+  bonusPoints: number
   wins: number
   draws: number
   losses: number
@@ -231,6 +232,7 @@ export default function StandingsPage() {
       return {
         player: p,
         totalPoints: score?.total_points ?? 0,
+        bonusPoints: score?.bonus_points ?? 0,
         wins: score?.wins ?? 0,
         draws: score?.draws ?? 0,
         losses: score?.losses ?? 0,
@@ -412,7 +414,12 @@ export default function StandingsPage() {
                         </span>
 
                         {/* Pts */}
-                        <span className={`text-lg font-black text-right ${ptsColor}`}>{entry.totalPoints}</span>
+                        <div className="text-right">
+                          <span className={`text-lg font-black leading-none ${ptsColor}`}>{entry.totalPoints}</span>
+                          {entry.bonusPoints > 0 && (
+                            <div className="text-[8px] font-bold text-purple-400 leading-none mt-0.5">+{entry.bonusPoints} bonus</div>
+                          )}
+                        </div>
                       </div>
                     </button>
 
@@ -429,6 +436,12 @@ export default function StandingsPage() {
                               <span className="font-semibold text-red-400">{entry.losses}L</span>
                               <span className="text-[var(--text-muted)]">·</span>
                               <span className="text-[var(--text-secondary)]">{entry.played} played</span>
+                              {entry.bonusPoints > 0 && (
+                                <>
+                                  <span className="text-[var(--text-muted)]">·</span>
+                                  <span className="font-semibold text-purple-400">+{entry.bonusPoints} bonus</span>
+                                </>
+                              )}
                             </div>
                           </div>
                         )}

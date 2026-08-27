@@ -104,6 +104,7 @@ export default function PlayerDetailPage({ params }: { params: { id: string } })
   const totalD = score?.draws ?? 0
   const totalL = score?.losses ?? 0
   const totalPts = score?.total_points ?? 0
+  const bonusPts = score?.bonus_points ?? 0
   const totalPlayed = score?.matches_played ?? 0
 
   const donUsed = powerUps.filter(p => p.power_up_type === 'double_or_nothing' && p.status !== 'cancelled')
@@ -166,6 +167,9 @@ export default function PlayerDetailPage({ params }: { params: { id: string } })
         <div className="shrink-0 text-right">
           <p className="text-3xl font-black" style={{ color: player.color }}>{totalPts}</p>
           <p className="text-[10px] text-[var(--text-secondary)] -mt-0.5">points</p>
+          {bonusPts > 0 && (
+            <p className="text-[10px] font-bold text-purple-400 mt-0.5">+{bonusPts} bonus</p>
+          )}
         </div>
       </div>
 
@@ -176,6 +180,15 @@ export default function PlayerDetailPage({ params }: { params: { id: string } })
           <StatTile label="D" value={totalD} color="text-amber-400" />
           <StatTile label="L" value={totalL} color="text-red-400" />
           <StatTile label="Played" value={totalPlayed} />
+        </div>
+      )}
+      {bonusPts > 0 && (
+        <div className="rounded-xl border border-purple-400/25 bg-purple-400/8 px-3 py-2.5 mb-3 flex items-center gap-2">
+          <span className="text-base leading-none">🎁</span>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-purple-400 leading-tight">+{bonusPts} bonus points</p>
+            <p className="text-[9px] text-[var(--text-muted)] leading-tight mt-0.5">From bottom-3 team wins & power-ups</p>
+          </div>
         </div>
       )}
 
