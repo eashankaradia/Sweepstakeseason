@@ -50,7 +50,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         .eq('league_id', leagueId)
         .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
         .order('kickoff_time', { ascending: false })
-        .limit(20),
+        .limit(80),
     ])
 
     setOwners(((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean))
@@ -78,7 +78,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   if (!team) return <AppShell title="Team" backHref="/teams"><EmptyState icon="⚽" title="Team not found" /></AppShell>
 
   const recentResults = fixtures.filter(f => f.status === 'completed').slice(0, 5)
-  const upcoming = fixtures.filter(f => f.status === 'scheduled' || f.status === 'live').reverse().slice(0, 5)
   const form = recentResults.map(f => {
     const isHome = f.home_team_id === id
     const myScore = isHome ? f.home_score : f.away_score
@@ -229,27 +228,176 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Upcoming fixtures */}
-      {upcoming.length > 0 && (
+      {/* Calendar */}
+      {fixtures.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Upcoming</p>
-          <div className="space-y-2">
-            {upcoming.map(f => <FixtureRow key={f.id} fixture={f} teamId={id} />)}
-          </div>
+          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Calendar</p>
+          <TeamCalendar fixtures={fixtures} teamId={id} />
         </div>
       )}
 
-      {/* Recent results */}
-      {recentResults.length > 0 && (
+      {/* All fixtures — every game and result this season */}
+      {fixtures.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">Recent results</p>
-          <div className="space-y-2">
-            {recentResults.map(f => <FixtureRow key={f.id} fixture={f} teamId={id} />)}
-          </div>
+          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">All fixtures</p>
+          <TeamFixtureMonths fixtures={fixtures} teamId={id} />
         </div>
       )}
 
     </AppShell>
+  )
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function TeamCalendar({ fixtures, teamId }: { fixtures: any[]; teamId: string }) {
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  })
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+
+  const fixtureMap = new Map<string, any[]>()
+  for (const f of fixtures) {
+    if (!f.kickoff_time) continue
+    const key = toDateKey(new Date(f.kickoff_time))
+    const arr = fixtureMap.get(key) ?? []
+    arr.push(f)
+    fixtureMap.set(key, arr)
+  }
+
+  const today = new Date()
+  const todayKey = toDateKey(today)
+  const displayDay = selectedDay ?? todayKey
+  const displayFixtures = fixtureMap.get(displayDay) ?? []
+
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const startDow = (firstDay.getDay() + 6) % 7
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const monthLabel = calMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const prevMonth = () => setCalMonth(m => { const d = new Date(m); d.setMonth(d.getMonth() - 1); return d })
+  const nextMonth = () => setCalMonth(m => { const d = new Date(m); d.setMonth(d.getMonth() + 1); return d })
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={prevMonth} title="Previous month" aria-label="Previous month" className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors">‹</button>
+        <span className="text-sm font-semibold text-[var(--text-primary)]">{monthLabel}</span>
+        <button onClick={nextMonth} title="Next month" aria-label="Next month" className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors">›</button>
+      </div>
+
+      <div className="grid grid-cols-7 mb-1">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <div key={i} className="text-center text-[10px] text-[var(--text-muted)] font-medium py-1">{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 mb-3">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />
+          const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const dayFixtures = fixtureMap.get(key) ?? []
+          const isToday = key === todayKey
+          const isSelected = key === displayDay
+          const f = dayFixtures[0]
+          let dotColor = ''
+          if (f?.status === 'completed') {
+            const isHome = f.home_team_id === teamId
+            const myScore = isHome ? f.home_score : f.away_score
+            const oppScore = isHome ? f.away_score : f.home_score
+            dotColor = myScore > oppScore ? 'bg-emerald-400' : myScore === oppScore ? 'bg-amber-400' : 'bg-red-400'
+          } else if (f) {
+            dotColor = isSelected ? 'bg-white' : 'bg-[var(--accent)]'
+          }
+
+          return (
+            <button
+              key={i}
+              onClick={() => setSelectedDay(key === displayDay ? null : key)}
+              className={`w-full aspect-square flex flex-col items-center justify-center rounded-lg transition-colors ${
+                isSelected
+                  ? 'bg-[var(--accent)] text-white'
+                  : isToday
+                    ? 'border border-[var(--accent)] text-[var(--accent)]'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--border)]/40'
+              }`}
+            >
+              <span className="text-[11px] leading-none">{day}</span>
+              {dayFixtures.length > 0 && <span className={`w-1 h-1 rounded-full mt-0.5 ${dotColor}`} />}
+            </button>
+          )
+        })}
+      </div>
+
+      {displayFixtures.length > 0 && (
+        <div className="space-y-2">
+          {displayFixtures.map(f => <FixtureRow key={f.id} fixture={f} teamId={teamId} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TeamFixtureMonths({ fixtures, teamId }: { fixtures: any[]; teamId: string }) {
+  const currentMonth = new Date().toISOString().substring(0, 7)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set([currentMonth]))
+
+  const groups = new Map<string, any[]>()
+  for (const f of fixtures) {
+    if (!f.kickoff_time) continue
+    const ym = f.kickoff_time.substring(0, 7)
+    const arr = groups.get(ym) ?? []
+    arr.push(f)
+    groups.set(ym, arr)
+  }
+  const sortedMonths = [...groups.keys()].sort((a, b) => b.localeCompare(a))
+
+  function toggle(ym: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(ym)) next.delete(ym)
+      else next.add(ym)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-2">
+      {sortedMonths.map(ym => {
+        const isExpanded = expanded.has(ym)
+        const monthFixtures = (groups.get(ym) ?? []).sort((a, b) => new Date(b.kickoff_time).getTime() - new Date(a.kickoff_time).getTime())
+        const label = new Date(ym + '-01T12:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+        return (
+          <div key={ym} className="rounded-xl border border-[var(--border)] overflow-hidden">
+            <button
+              onClick={() => toggle(ym)}
+              className="w-full px-3 py-2.5 min-h-11 bg-[var(--bg-card)] flex items-center justify-between gap-2 text-left"
+            >
+              <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
+              <svg width="10" height="10" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {isExpanded && (
+              <div className="px-2 pb-2 pt-1 space-y-2 bg-[var(--bg)]">
+                {monthFixtures.map(f => <FixtureRow key={f.id} fixture={f} teamId={teamId} />)}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
