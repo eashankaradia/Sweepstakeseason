@@ -174,7 +174,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
           )}
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-3xl font-black" style={{ color: player.color }}>{totalPts}</p>
+          <p className="font-display text-3xl font-black" style={{ color: player.color }}>{totalPts}</p>
           <p className="text-[10px] text-[var(--text-secondary)] -mt-0.5">points</p>
           {bonusPts > 0 && (
             <p className="text-[10px] font-bold text-purple-400 mt-0.5">+{bonusPts} bonus</p>

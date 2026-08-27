@@ -44,13 +44,3 @@ export const PLAYER_COLORS = [
   '#8B5CF6', '#EC4899', '#14B8A6', '#F97316',
   '#6366F1', '#84CC16', '#06B6D4', '#A855F7',
 ]
-
-export const COMPETITION_BADGES: Record<string, { label: string; color: string }> = {
-  'Premier League':        { label: 'PL',  color: '#3D0066' },
-  'La Liga':               { label: 'LL',  color: '#D4B136' },
-  'Bundesliga':            { label: 'BL',  color: '#D20515' },
-  'Serie A':               { label: 'SA',  color: '#1E3C72' },
-  'Champions League':      { label: 'UCL', color: '#1A3A6E' },
-  'Europa League':         { label: 'UEL', color: '#F97316' },
-  'Conference League':     { label: 'ECL', color: '#16A34A' },
-}

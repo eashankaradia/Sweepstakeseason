@@ -399,7 +399,7 @@ export default function StandingsPage() {
 
                         {/* Pts */}
                         <div className="text-right">
-                          <span className={`text-lg font-black leading-none ${ptsColor}`}>{entry.totalPoints}</span>
+                          <span className={`font-display text-lg font-black leading-none ${ptsColor}`}>{entry.totalPoints}</span>
                           {entry.bonusPoints > 0 && (
                             <div className="text-[8px] font-bold text-purple-400 leading-none mt-0.5">+{entry.bonusPoints} bonus</div>
                           )}
