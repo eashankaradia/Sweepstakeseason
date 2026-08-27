@@ -7,10 +7,10 @@ import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { OwnerStack } from '@/components/ui/OwnerStack'
-import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
+import { computeStandingsAsOf, giantKillerEligibility, type TeamRank } from '@/lib/giantKiller'
 import Link from 'next/link'
 
 export default function DashboardPage() {
@@ -25,8 +25,13 @@ export default function DashboardPage() {
   const [posChangeMap, setPosChangeMap] = useState<Map<string, number>>(new Map())
   const [weekFixtures, setWeekFixtures] = useState<any[]>([])
   const [myPowerUps, setMyPowerUps] = useState<any[]>([])
+  const [myTeams, setMyTeams] = useState<any[]>([])
+  const [myTeamPoints, setMyTeamPoints] = useState<Map<string, number>>(new Map())
+  const [myTeamUpcoming, setMyTeamUpcoming] = useState<Map<string, any[]>>(new Map())
+  const [powerUpFeed, setPowerUpFeed] = useState<any[]>([])
   const [myUserId, setMyUserId] = useState<string | null>(null)
-  const [bottomThreshold, setBottomThreshold] = useState<number | null>(null)
+  const [gkTeamIds, setGkTeamIds] = useState<string[]>([])
+  const [gkFixtures, setGkFixtures] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(false)
@@ -69,16 +74,16 @@ export default function DashboardPage() {
       { data: todayFix },
       { data: fullActivity },
       { data: weekFix },
-      { count: rankedTeamCount },
+      { data: teamScores },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
       supabase.from('player_team_assignments').select('team_id, player_id, players(id,name,color), teams(id,short_name,name,logo_url,primary_color,secondary_color,league_position)').eq('league_id', lg.id),
       supabase.from('fixtures')
-        .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+        .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
         .eq('league_id', lg.id).eq('status', 'live'),
       supabase.from('fixtures')
-        .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+        .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
         .eq('league_id', lg.id).eq('status', 'scheduled')
         .gte('kickoff_time', `${todayStr}T00:00:00`)
         .lte('kickoff_time', `${todayStr}T23:59:59`)
@@ -90,17 +95,14 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(300),
       supabase.from('fixtures')
-        .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+        .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
         .eq('league_id', lg.id).eq('status', 'scheduled')
         .gte('kickoff_time', `${tomorrowStr}T00:00:00`)
         .lte('kickoff_time', `${weekEndStr}T23:59:59`)
         .order('kickoff_time')
         .limit(30),
-      supabase.from('teams').select('id', { count: 'exact', head: true }).not('league_position', 'is', null),
+      supabase.from('team_scores').select('team_id, total_points').eq('league_id', lg.id),
     ])
-    // Bottom-3 bonus rule (matches the sync-results edge function): the
-    // bottom 3 league positions currently earn bonus points for a win.
-    setBottomThreshold(rankedTeamCount ? rankedTeamCount - 2 : null)
 
     // Owner map: team_id → player[]
     const oMap = new Map<string, any[]>()
@@ -119,6 +121,13 @@ export default function DashboardPage() {
       }
     }
     setOwnerMap(oMap)
+
+    // Points earned per team so far
+    const ptsMap = new Map<string, number>()
+    for (const ts of (teamScores ?? []) as any[]) {
+      ptsMap.set(ts.team_id, (ptsMap.get(ts.team_id) ?? 0) + (ts.total_points ?? 0))
+    }
+    setMyTeamPoints(ptsMap)
 
     // Weekly pts + form
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
@@ -145,7 +154,7 @@ export default function DashboardPage() {
 
     const rows = (players ?? []).map((p: any) => {
       const score = (playerScores ?? []).find((s: any) => s.player_id === p.id)
-      const myTeams = (assignments ?? []).filter((a: any) => a.player_id === p.id)
+      const myTeamsForPlayer = (assignments ?? []).filter((a: any) => a.player_id === p.id)
       return {
         player: p,
         totalPoints: score?.total_points ?? 0,
@@ -154,7 +163,7 @@ export default function DashboardPage() {
         losses: score?.losses ?? 0,
         played: score?.matches_played ?? 0,
         bonusPoints: score?.bonus_points ?? 0,
-        teamCount: myTeams.length,
+        teamCount: myTeamsForPlayer.length,
         teams: playerTeamsMap.get(p.id) ?? [],
       }
     }).sort((a: any, b: any) => b.totalPoints - a.totalPoints)
@@ -172,9 +181,13 @@ export default function DashboardPage() {
     setPosChangeMap(pcMap)
     setStandings(rows)
 
+    let myPlayer: any = null
     if (uid) {
-      const myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
+      myPlayer = (players ?? []).find((p: any) => p.user_id === uid)
       if (myPlayer) {
+        const mine = playerTeamsMap.get(myPlayer.id) ?? []
+        setMyTeams(mine)
+
         const todayFixIds = [...(live ?? []), ...(todayFix ?? [])].map((f: any) => f.id)
         if (todayFixIds.length > 0) {
           const { data: pups } = await supabase
@@ -188,7 +201,66 @@ export default function DashboardPage() {
         } else {
           setMyPowerUps([])
         }
+
+        if (mine.length > 0) {
+          const myTeamIds = mine.map((t: any) => t.id)
+          const orClause = myTeamIds.map((id: string) => `home_team_id.eq.${id},away_team_id.eq.${id}`).join(',')
+          const { data: upcoming } = await supabase
+            .from('fixtures')
+            .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+            .eq('league_id', lg.id)
+            .eq('status', 'scheduled')
+            .or(orClause)
+            .order('kickoff_time', { ascending: true })
+            .limit(150)
+          const byTeam = new Map<string, any[]>()
+          for (const f of (upcoming ?? []) as any[]) {
+            for (const tid of myTeamIds) {
+              if (f.home_team_id !== tid && f.away_team_id !== tid) continue
+              const arr = byTeam.get(tid) ?? []
+              if (arr.length < 5) arr.push(f)
+              byTeam.set(tid, arr)
+            }
+          }
+          setMyTeamUpcoming(byTeam)
+        } else {
+          setMyTeamUpcoming(new Map())
+        }
+      } else {
+        setMyTeams([])
+        setMyTeamUpcoming(new Map())
       }
+    }
+
+    // Power-up feed: Double or Nothing is visible to everyone at all times
+    // (including future locked-in picks). Reverse only becomes visible once
+    // the match it targeted has resolved (status flips pending -> applied),
+    // so nobody finds out beforehand who's been targeted.
+    const { data: pupFeed } = await supabase
+      .from('power_up_activations')
+      .select('*, players(name,color), target:target_player_id(name,color), teams(name,short_name,logo_url), fixtures(kickoff_time,status)')
+      .eq('league_id', lg.id)
+      .order('activated_at', { ascending: false })
+      .limit(60)
+    setPowerUpFeed(((pupFeed ?? []) as any[]).filter(p => p.power_up_type === 'double_or_nothing' || p.status === 'applied'))
+
+    // Giant Killer eligibility data: real table position computed from our
+    // own completed results (see src/lib/giantKiller.ts), not the stale
+    // teams.league_position field.
+    const anyFixture = (live ?? [])[0] ?? (todayFix ?? [])[0]
+    if (anyFixture) {
+      const [{ data: compTeams }, { data: compFixtures }] = await Promise.all([
+        supabase.from('team_competitions').select('team_id').eq('competition_id', anyFixture.competition_id),
+        supabase.from('fixtures')
+          .select('home_team_id, away_team_id, home_score, away_score, kickoff_time, status')
+          .eq('competition_id', anyFixture.competition_id)
+          .eq('status', 'completed'),
+      ])
+      setGkTeamIds([...new Set((compTeams ?? []).map((r: any) => r.team_id))] as string[])
+      setGkFixtures((compFixtures ?? []) as any[])
+    } else {
+      setGkTeamIds([])
+      setGkFixtures([])
     }
 
     setLiveFixtures((live ?? []) as any[])
@@ -256,14 +328,19 @@ export default function DashboardPage() {
   const myIdx = myEntry ? standings.indexOf(myEntry) : -1
   const myPos = myIdx >= 0 ? myIdx + 1 : null
   const hasDraft = league.draft_locked || standings.some((s: any) => s.teamCount > 0)
-  const rivalAbove = myIdx > 0 ? standings[myIdx - 1] : null
-  const rivalBelow = myIdx >= 0 && myIdx < standings.length - 1 ? standings[myIdx + 1] : null
 
   const myTeamIdsForStakes = myEntry
     ? new Set([...ownerMap.entries()].filter(([, arr]) => arr.some((p: any) => p.id === myEntry.player.id)).map(([id]) => id))
     : new Set<string>()
 
   const allTodayFixtures = [...liveFixtures, ...todayFixtures]
+
+  const gkRankCache = new Map<string, Map<string, TeamRank> | null>()
+  function gkRanksBefore(kickoff: string | null) {
+    if (!kickoff) return null
+    if (!gkRankCache.has(kickoff)) gkRankCache.set(kickoff, computeStandingsAsOf(gkTeamIds, gkFixtures, kickoff))
+    return gkRankCache.get(kickoff) ?? null
+  }
 
   return (
     <AppShell
@@ -289,6 +366,9 @@ export default function DashboardPage() {
       {/* Matchday header */}
       <MatchdayHeader league={league} liveCount={liveFixtures.length} todayCount={allTodayFixtures.length} weekFixtures={weekFixtures} />
 
+      {/* Your clubs — crest strip */}
+      {hasDraft && myTeams.length > 0 && <TeamCrestStrip teams={myTeams} />}
+
       {/* Draft not yet run */}
       {!hasDraft && (
         <div className="rounded-2xl border border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 text-center py-6 px-4 mb-5">
@@ -302,13 +382,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Your position and nearest rivals — one focused race module */}
+      {/* Your standing */}
       {myEntry && myPos && hasDraft && (
-        <RivalRaceCard
+        <YourStandingCard
           myEntry={myEntry}
           myPos={myPos}
-          rivalAbove={rivalAbove}
-          rivalBelow={rivalBelow}
           posDelta={posChangeMap.get(myEntry.player.id) ?? 0}
           weeklyPts={weeklyPtsMap.get(myEntry.player.id) ?? 0}
           form={formMap.get(myEntry.player.id) ?? []}
@@ -333,7 +411,7 @@ export default function DashboardPage() {
                 key={f.id}
                 fixture={f}
                 ownerMap={ownerMap}
-                implication={computeImplication(f, myTeamIdsForStakes, myEntry, rivalAbove, myPowerUps, bottomThreshold)}
+                implication={computeImplication(f, myTeamIdsForStakes, myPowerUps, gkRanksBefore(f.kickoff_time))}
               />
             ))}
           </div>
@@ -354,68 +432,38 @@ export default function DashboardPage() {
                 fixture={f}
                 ownerMap={ownerMap}
                 isMine={myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id)}
-                implication={computeImplication(f, myTeamIdsForStakes, myEntry, rivalAbove, myPowerUps, bottomThreshold)}
+                implication={computeImplication(f, myTeamIdsForStakes, myPowerUps, gkRanksBefore(f.kickoff_time))}
               />
             ))}
           </div>
         </section>
       )}
 
-      {/* Matchday impact feed */}
-      {activityFeed.length > 0 && (
+      {/* Your clubs' next fixtures */}
+      {hasDraft && myTeams.length > 0 && (
         <section className="mb-5">
-          <SectionHeader
-            title="Matchday feed"
-            action={<Link href="/activity">See all →</Link>}
-          />
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-            {activityFeed.map((event: any, i: number) => (
-              <ImpactFeedRow key={event.id} event={event} divider={i < activityFeed.length - 1} />
+          <SectionHeader title="Your clubs' next fixtures" action={<Link href="/my-teams">All →</Link>} />
+          <div className="space-y-3">
+            {myTeams.map(team => (
+              <MyTeamFixtureRow
+                key={team.id}
+                team={team}
+                points={myTeamPoints.get(team.id) ?? 0}
+                fixtures={myTeamUpcoming.get(team.id) ?? []}
+                ownerMap={ownerMap}
+              />
             ))}
           </div>
         </section>
       )}
 
-      {/* Your clubs */}
-      {(() => {
-        const myWeek = myTeamIdsForStakes.size > 0
-          ? weekFixtures.filter((f: any) => myTeamIdsForStakes.has(f.home_team_id) || myTeamIdsForStakes.has(f.away_team_id))
-          : []
-        if (myWeek.length === 0) return null
-        const byDay = new Map<string, any[]>()
-        for (const f of myWeek) {
-          const day = (f.kickoff_time as string).substring(0, 10)
-          if (!byDay.has(day)) byDay.set(day, [])
-          byDay.get(day)!.push(f)
-        }
-        return (
-          <section className="mb-5">
-            <SectionHeader
-              title="Your clubs"
-              action={<Link href="/my-teams">All →</Link>}
-            />
-            <div className="space-y-3">
-              {[...byDay.entries()].map(([day, dayFixtures]) => (
-                <div key={day}>
-                  <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5">
-                    {new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-                  </p>
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-                    {dayFixtures.map((f: any, i: number) => (
-                      <MiniFixtureRow
-                        key={f.id}
-                        fixture={f}
-                        ownerMap={ownerMap}
-                        divider={i < dayFixtures.length - 1}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )
-      })()}
+      {/* Power-ups feed */}
+      {powerUpFeed.length > 0 && (
+        <section className="mb-5">
+          <SectionHeader title="Power-ups" />
+          <PowerUpsFeed activations={powerUpFeed} />
+        </section>
+      )}
 
       {/* Weekly recap — only when nothing is live right now */}
       {liveFixtures.length === 0 && hasDraft && standings.some((s: any) => s.played > 0) && (
@@ -444,7 +492,7 @@ function MatchdayHeader({ league, liveCount, todayCount, weekFixtures }: {
   }
 
   return (
-    <div className="flex items-start justify-between gap-2 mb-5">
+    <div className="flex items-start justify-between gap-2 mb-4">
       <div className="flex-1 min-w-0">
         <h1 className="font-black text-lg text-[var(--text-primary)] leading-tight truncate">{league.name}</h1>
         <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{league.season}</p>
@@ -457,21 +505,37 @@ function MatchdayHeader({ league, liveCount, todayCount, weekFixtures }: {
   )
 }
 
-// ─── Rival race card ──────────────────────────────────────────────────────────
+// ─── Team crest strip ──────────────────────────────────────────────────────────
 
-function RivalRaceCard({ myEntry, myPos, rivalAbove, rivalBelow, posDelta, weeklyPts, form }: {
-  myEntry: any; myPos: number; rivalAbove: any; rivalBelow: any
+function TeamCrestStrip({ teams }: { teams: any[] }) {
+  const many = teams.length > 7
+  return (
+    <div className={`mb-5 ${many ? 'scroll-x -mx-4 px-4 flex gap-3' : 'flex items-center justify-between'}`}>
+      {teams.map(team => (
+        <Link
+          key={team.id}
+          href={`/teams/${team.id}`}
+          className={`pressable flex flex-col items-center gap-1 ${many ? 'shrink-0 w-14' : 'flex-1'}`}
+          title={team.name}
+        >
+          <div className="w-11 h-11 flex items-center justify-center rounded-full bg-[var(--bg-card)] border border-[var(--border)]">
+            <TeamCrest team={team} size="md" />
+          </div>
+          <span className="text-[9px] text-[var(--text-secondary)] text-center truncate w-full">
+            {team.short_name || team.name}
+          </span>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+// ─── Your standing card ─────────────────────────────────────────────────────────
+
+function YourStandingCard({ myEntry, myPos, posDelta, weeklyPts, form }: {
+  myEntry: any; myPos: number
   posDelta: number; weeklyPts: number; form: string[]
 }) {
-  const gapAbove = rivalAbove ? rivalAbove.totalPoints - myEntry.totalPoints : null
-  const gapBelow = rivalBelow ? myEntry.totalPoints - rivalBelow.totalPoints : null
-  const oneResultAway = gapAbove != null && gapAbove > 0 && gapAbove <= 3
-
-  const contextLines: string[] = []
-  if (rivalAbove && gapAbove! > 0) contextLines.push(`${gapAbove} pt${gapAbove === 1 ? '' : 's'} behind ${firstName(rivalAbove.player.name)}`)
-  if (posDelta > 0) contextLines.push(`You climbed ${posDelta} place${posDelta === 1 ? '' : 's'} this matchday`)
-  else if (posDelta < 0) contextLines.push(`You dropped ${Math.abs(posDelta)} place${Math.abs(posDelta) === 1 ? '' : 's'} this matchday`)
-
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] mb-5 overflow-hidden">
       <div className="p-4">
@@ -512,43 +576,21 @@ function RivalRaceCard({ myEntry, myPos, rivalAbove, rivalBelow, posDelta, weekl
           </div>
         </div>
 
-        {contextLines.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-0.5">
-            {contextLines.map((line, i) => (
-              <p key={i} className="text-xs text-[var(--text-secondary)]">{line}</p>
-            ))}
-          </div>
-        )}
-
-        {oneResultAway && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[var(--accent)]">
-            🔥 One result from overtaking {firstName(rivalAbove.player.name)}
+        {posDelta !== 0 && (
+          <div className="mt-3 pt-3 border-t border-[var(--border)]">
+            <p className="text-xs text-[var(--text-secondary)]">
+              {posDelta > 0
+                ? `You climbed ${posDelta} place${posDelta === 1 ? '' : 's'} this matchday`
+                : `You dropped ${Math.abs(posDelta)} place${Math.abs(posDelta) === 1 ? '' : 's'} this matchday`}
+            </p>
           </div>
         )}
       </div>
-
-      {(rivalAbove || rivalBelow) && (
-        <div className="border-t border-[var(--border)] divide-y divide-[var(--border)]">
-          {rivalAbove && <RivalRow entry={rivalAbove} gap={gapAbove!} direction="above" />}
-          {rivalBelow && <RivalRow entry={rivalBelow} gap={gapBelow!} direction="below" />}
-        </div>
-      )}
 
       <Link href="/standings" className="block text-center text-xs font-medium text-[var(--accent)] py-2.5 border-t border-[var(--border)] hover:bg-[var(--bg-card-hover)] transition-colors">
         Full standings →
       </Link>
     </div>
-  )
-}
-
-function RivalRow({ entry, gap, direction }: { entry: any; gap: number; direction: 'above' | 'below' }) {
-  return (
-    <Link href={`/players/${entry.player.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-[var(--bg-card-hover)] transition-colors">
-      <span className="text-xs text-[var(--text-muted)] w-4 shrink-0 text-center">{direction === 'above' ? '↑' : '↓'}</span>
-      <Avatar name={entry.player.name} color={entry.player.color} size="xs" />
-      <span className="text-sm text-[var(--text-primary)] flex-1 truncate">{entry.player.name}</span>
-      <span className="text-xs text-[var(--text-muted)] shrink-0">{gap} pt{gap === 1 ? '' : 's'} {direction === 'above' ? 'ahead' : 'behind'}</span>
-    </Link>
   )
 }
 
@@ -559,10 +601,8 @@ type Implication = { line: string; isPositive: boolean; giantKiller: boolean; do
 function computeImplication(
   fixture: any,
   myTeamIds: Set<string>,
-  myEntry: any,
-  rivalAbove: any,
   myPowerUps: any[],
-  bottomThreshold: number | null,
+  gkRanks: Map<string, TeamRank> | null,
 ): Implication {
   const isHome = myTeamIds.has(fixture.home_team_id)
   const isAway = myTeamIds.has(fixture.away_team_id)
@@ -571,17 +611,11 @@ function computeImplication(
   const myTeam = isHome ? fixture.home_team : fixture.away_team
   const donActive = myPowerUps.some((p: any) => p.fixture_id === fixture.id && p.power_up_type === 'double_or_nothing' && p.team_id === myTeam?.id)
   const winPts = donActive ? 6 : 3
-  const giantKiller = !!(myTeam?.league_position != null && bottomThreshold != null && bottomThreshold > 0 && myTeam.league_position >= bottomThreshold)
+  const { eligible, bottomTeamId } = giantKillerEligibility(fixture.home_team_id, fixture.away_team_id, gkRanks)
+  const giantKiller = eligible && bottomTeamId === myTeam?.id
 
   let line = `Win: +${winPts} pt${winPts === 1 ? '' : 's'}`
   let isPositive = true
-
-  if (myEntry && rivalAbove) {
-    const afterWin = myEntry.totalPoints + winPts
-    if (afterWin > rivalAbove.totalPoints) {
-      line = `A win moves you above ${firstName(rivalAbove.player.name)}`
-    }
-  }
 
   if (fixture.status === 'live') {
     const myScore = isHome ? fixture.home_score : fixture.away_score
@@ -596,10 +630,6 @@ function computeImplication(
   return { line, isPositive, giantKiller, donActive }
 }
 
-function firstName(name: string): string {
-  return name.split(' ')[0]
-}
-
 // ─── Today fixture card (horizontal scroll) ───────────────────────────────────
 
 function TodayFixtureCard({ fixture, ownerMap, isMine, implication }: {
@@ -608,7 +638,6 @@ function TodayFixtureCard({ fixture, ownerMap, isMine, implication }: {
   const isLive = fixture.status === 'live'
   const homeOwners: any[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: any[] = ownerMap.get(fixture.away_team_id) ?? []
-  const comp = fixture.competition as any
 
   return (
     <Link href={`/fixtures/${fixture.id}`} className="pressable">
@@ -622,9 +651,8 @@ function TodayFixtureCard({ fixture, ownerMap, isMine, implication }: {
             : 'border-[var(--border)] bg-[var(--bg-card)]',
         ].join(' ')}
       >
-        {/* Competition + time */}
-        <div className="flex items-center justify-between gap-1">
-          <CompetitionBadge shortName={comp?.short_name} name={comp?.name} type={comp?.competition_type} />
+        {/* Time */}
+        <div className="flex items-center justify-end gap-1">
           {isLive ? (
             <span className="text-[9px] font-bold text-[var(--red)] animate-pulse">LIVE</span>
           ) : (
@@ -676,45 +704,6 @@ function TodayFixtureCard({ fixture, ownerMap, isMine, implication }: {
   )
 }
 
-// ─── Matchday impact feed row ─────────────────────────────────────────────────
-
-const EVENT_ICONS: Record<string, string> = {
-  full_time: '⚽',
-  giant_killer: '⚔️',
-  double_or_nothing: '🎲',
-  reverse: '🔄',
-  position_change: '📈',
-  points_earned: '⭐',
-  qualification: '🏆',
-  elimination: '❌',
-}
-
-const HIGHLIGHT_EVENTS = new Set(['giant_killer', 'double_or_nothing', 'reverse'])
-
-function ImpactFeedRow({ event, divider }: { event: any; divider: boolean }) {
-  const highlighted = HIGHLIGHT_EVENTS.has(event.event_type)
-  return (
-    <div
-      className={[
-        'px-3 py-2.5 flex items-start gap-2.5',
-        divider ? 'border-b border-[var(--border)]' : '',
-        highlighted ? 'bg-[var(--accent)]/5 border-l-2 border-l-[var(--accent)]' : '',
-      ].join(' ')}
-    >
-      <span className={highlighted ? 'text-base shrink-0 mt-0.5' : 'text-sm shrink-0 mt-0.5'}>{EVENT_ICONS[event.event_type] ?? '📢'}</span>
-      <div className="flex-1 min-w-0">
-        <p className={`text-xs text-[var(--text-primary)] leading-snug ${highlighted ? 'font-semibold' : 'font-medium'}`}>{event.title}</p>
-        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{formatRelativeTime(event.created_at)}</p>
-      </div>
-      {event.points_delta != null && event.points_delta !== 0 && (
-        <span className={`text-xs font-bold shrink-0 ${event.points_delta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
-          {event.points_delta > 0 ? '+' : ''}{event.points_delta}
-        </span>
-      )}
-    </div>
-  )
-}
-
 // ─── Live fixture card ────────────────────────────────────────────────────────
 
 function LiveFixtureCard({ fixture, ownerMap, implication }: { fixture: any; ownerMap: Map<string, any[]>; implication: Implication }) {
@@ -757,42 +746,125 @@ function LiveFixtureCard({ fixture, ownerMap, implication }: { fixture: any; own
   )
 }
 
-// ─── Mini fixture row (for "Your clubs") ──────────────────────────────────────
+// ─── Your clubs' next fixtures ────────────────────────────────────────────────
 
-function MiniFixtureRow({ fixture, ownerMap, divider }: { fixture: any; ownerMap: Map<string, any[]>; divider: boolean }) {
-  const homeOwners: any[] = ownerMap.get(fixture.home_team_id) ?? []
-  const awayOwners: any[] = ownerMap.get(fixture.away_team_id) ?? []
-  const isCompleted = fixture.status === 'completed'
-  const isLive = fixture.status === 'live'
-  const comp = fixture.competition as any
+function CrestWithOwnerBadge({ team, ownerMap }: { team: any; ownerMap: Map<string, any[]> }) {
+  const owners: any[] = ownerMap.get(team?.id) ?? []
+  const owner = owners[0]
+  const initials = owner ? owner.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() : null
+  return (
+    <div className="relative shrink-0">
+      <TeamCrest team={team} size="sm" />
+      {initials && (
+        <span
+          className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[6px] font-black border border-[var(--bg-card)] leading-none"
+          style={{ backgroundColor: owner.color, color: '#fff' }}
+          title={owner.name}
+        >
+          {initials}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function MyTeamFixtureRow({ team, points, fixtures, ownerMap }: {
+  team: any; points: number; fixtures: any[]; ownerMap: Map<string, any[]>
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)]">
+        <TeamCrest team={team} size="sm" />
+        <span className="text-sm font-semibold text-[var(--text-primary)] flex-1 truncate">{team.name}</span>
+        <span className="text-xs font-bold text-[var(--text-primary)] tabular-nums">{points}</span>
+        <span className="text-[9px] text-[var(--text-muted)]">pts for you</span>
+      </div>
+      {fixtures.length === 0 ? (
+        <p className="text-[11px] text-[var(--text-muted)] px-3 py-2.5">No upcoming fixtures scheduled yet</p>
+      ) : (
+        <div className="flex items-center gap-3 px-3 py-2.5 overflow-x-auto">
+          {fixtures.map(f => {
+            const opponent = f.home_team_id === team.id ? f.away_team : f.home_team
+            return (
+              <Link key={f.id} href={`/fixtures/${f.id}`} className="pressable flex flex-col items-center gap-1 shrink-0 w-12">
+                <CrestWithOwnerBadge team={opponent} ownerMap={ownerMap} />
+                <span className="text-[8px] text-[var(--text-muted)] text-center">
+                  {f.kickoff_time ? new Date(f.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Power-ups feed ───────────────────────────────────────────────────────────
+
+function PowerUpsFeed({ activations }: { activations: any[] }) {
+  // Group Double or Nothing rows by (player, team, month) into one card each
+  // since a single activation covers every fixture in that month.
+  type Group = { key: string; type: 'don'; player: any; team: any; month: string; total: number; applied: number; result: 'ahead' | 'behind' | 'even' | 'pending' }
+  const donGroups = new Map<string, Group>()
+  const reverseRows: any[] = []
+
+  for (const a of activations) {
+    if (a.power_up_type === 'double_or_nothing') {
+      const key = `${a.player_id}-${a.team_id}-${a.season_month}`
+      const g = donGroups.get(key) ?? { key, type: 'don', player: a.players, team: a.teams, month: a.season_month, total: 0, applied: 0, result: 'pending' }
+      g.total++
+      if (a.status === 'applied') {
+        g.applied++
+        if (a.points_delta > 0) g.result = g.result === 'behind' ? 'even' : 'ahead'
+        else if (a.points_delta < 0) g.result = g.result === 'ahead' ? 'even' : 'behind'
+      }
+      donGroups.set(key, g)
+    } else if (a.power_up_type === 'reverse' && a.status === 'applied') {
+      reverseRows.push(a)
+    }
+  }
+
+  const items = [...donGroups.values(), ...reverseRows.map(r => ({ ...r, type: 'reverse' as const }))]
+  if (items.length === 0) return null
 
   return (
-    <Link href={`/fixtures/${fixture.id}`} className="pressable block">
-      <div className={['flex items-center gap-1.5 px-3 py-2.5 hover:bg-[var(--accent)]/5', divider ? 'border-b border-[var(--border)]' : ''].join(' ')}>
-        <CompetitionBadge shortName={comp?.short_name} name={comp?.name} type={comp?.competition_type} className="shrink-0 w-[28px] text-center" />
-        <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-          <OwnerStack owners={homeOwners} size="xs" max={1} />
-          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">{fixture.home_team?.short_name || fixture.home_team?.name}</span>
-          <TeamCrest team={fixture.home_team} size="xs" />
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      {items.map((item: any, i) => (
+        <div key={item.type === 'don' ? item.key : item.id} className={`flex items-center gap-2.5 px-3 py-2.5 ${i < items.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
+          <span className="text-base shrink-0">{item.type === 'don' ? '🎲' : '🔄'}</span>
+          <div className="flex-1 min-w-0">
+            {item.type === 'don' ? (
+              <>
+                <p className="text-xs text-[var(--text-primary)] font-medium leading-snug">
+                  {item.player?.name} doubled {item.team?.short_name || item.team?.name} for {formatMonthLabel(item.month)}
+                </p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                  {item.applied}/{item.total} games played
+                  {item.applied > 0 && item.result !== 'pending' && item.result !== 'even' && (
+                    <span className={item.result === 'ahead' ? 'text-[var(--green)]' : 'text-[var(--red)]'}> · {item.result === 'ahead' ? 'paying off' : 'backfiring'}</span>
+                  )}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-[var(--text-primary)] font-medium leading-snug">
+                  {item.players?.name} used Reverse on {item.target?.name}&apos;s {item.teams?.short_name || item.teams?.name}
+                </p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Revealed after full time</p>
+              </>
+            )}
+          </div>
         </div>
-        <div className="shrink-0 w-[52px] text-center">
-          {(isCompleted || isLive) ? (
-            <span className="font-bold text-[13px] text-[var(--text-primary)] tabular-nums">{fixture.home_score}–{fixture.away_score}</span>
-          ) : (
-            <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
-              {fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'vs'}
-            </span>
-          )}
-          {isLive && <div className="text-[8px] text-[var(--red)] font-bold animate-pulse">LIVE</div>}
-        </div>
-        <div className="flex items-center gap-1 flex-1 min-w-0">
-          <TeamCrest team={fixture.away_team} size="xs" />
-          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">{fixture.away_team?.short_name || fixture.away_team?.name}</span>
-          <OwnerStack owners={awayOwners} size="xs" max={1} />
-        </div>
-      </div>
-    </Link>
+      ))}
+    </div>
   )
+}
+
+function formatMonthLabel(ym: string): string {
+  if (!ym) return ''
+  const [y, m] = ym.split('-')
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
 // ─── Weekly recap ─────────────────────────────────────────────────────────────
@@ -852,18 +924,6 @@ function WeeklyRecapCard({ standings, weeklyPtsMap, posChangeMap, activityFeed, 
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'Just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days === 1) return 'Yesterday'
-  return `${days}d ago`
-}
 
 function formatCountdown(kickoff: string): string {
   const diff = new Date(kickoff).getTime() - Date.now()
