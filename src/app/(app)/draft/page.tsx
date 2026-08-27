@@ -14,6 +14,33 @@ import { formatDate } from '@/lib/utils'
 import { isAdminUser } from '@/lib/admin'
 import type { League, Player, Team, Competition, DraftRun } from '@/lib/supabase/types'
 
+type DraftLifecycleState = 'not_started' | 'in_progress' | 'completed' | 'archived'
+
+function getDraftLifecycleState(hasDraft: boolean, isLocked: boolean, seasonStarted: boolean): DraftLifecycleState {
+  if (!hasDraft) return 'not_started'
+  if (!isLocked) return 'in_progress'
+  if (seasonStarted) return 'archived'
+  return 'completed'
+}
+
+const LIFECYCLE_COPY: Record<DraftLifecycleState, { label: string; badge: 'muted' | 'warning' | 'success' | 'info'; icon: string; description: string }> = {
+  not_started: { label: 'Not started', badge: 'muted', icon: '⏳', description: 'No draft has been generated yet.' },
+  in_progress: { label: 'In progress', badge: 'warning', icon: '⚠️', description: 'A draft has been saved but is not locked — it can still be regenerated or changed.' },
+  completed: { label: 'Completed', badge: 'success', icon: '🔒', description: 'The draft is locked. Teams are assigned for the season.' },
+  archived: { label: 'Archived', badge: 'info', icon: '📁', description: 'The season is underway — this draft is now history. Unlocking it would wipe every team assignment the season\'s scores depend on.' },
+}
+
+function DraftStatusBanner({ state, runDate }: { state: DraftLifecycleState; runDate?: string | null }) {
+  const c = LIFECYCLE_COPY[state]
+  return (
+    <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <Badge variant={c.badge}>{c.icon} {c.label}</Badge>
+      {runDate && <span className="text-xs text-[var(--text-muted)]">{formatDate(runDate)}</span>}
+      <p className="w-full text-xs text-[var(--text-secondary)] mt-0.5">{c.description}</p>
+    </div>
+  )
+}
+
 export default function DraftPage() {
   const [league, setLeague] = useState<League | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -38,6 +65,8 @@ export default function DraftPage() {
   const [sharedPickPlayerIds, setSharedPickPlayerIds] = useState<string[]>([])
   const [sharedSearch, setSharedSearch] = useState('')
   const [savingShared, setSavingShared] = useState(false)
+  const [seasonStarted, setSeasonStarted] = useState(false)
+  const [showSetup, setShowSetup] = useState(false)
 
   const supabase = createClient()
 
@@ -101,6 +130,7 @@ export default function DraftPage() {
       { data: assignmentsData },
       { data: compsData },
       { data: authData },
+      { count: completedFixtureCount },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position'),
       supabase
@@ -112,7 +142,9 @@ export default function DraftPage() {
       supabase.from('player_team_assignments').select('*, teams(*), players(*)').eq('league_id', lg.id),
       supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
       supabase.auth.getUser(),
+      supabase.from('fixtures').select('id', { count: 'exact', head: true }).eq('league_id', lg.id).eq('status', 'completed'),
     ])
+    setSeasonStarted((completedFixtureCount ?? 0) > 0)
 
     const user = authData?.user ?? null
     const { data: profile } = user
@@ -312,6 +344,10 @@ export default function DraftPage() {
   async function handleUnlock() {
     if (!isAdmin) return
     if (!league) return
+    const warning = seasonStarted
+      ? 'The season has already started — matches have been played against the current team assignments.\n\nUnlocking lets you regenerate the draft, which would DELETE every team assignment and replace it with a new one. Points and history already recorded stay attached to the old assignments and will no longer make sense.\n\nAre you absolutely sure you want to unlock?'
+      : 'Unlock the draft? This allows the allocation to be regenerated or changed.'
+    if (!confirm(warning)) return
     await supabase.from('sweepstake_leagues').update({ draft_locked: false, draft_locked_at: null }).eq('id', league.id)
     loadData()
   }
@@ -365,25 +401,15 @@ export default function DraftPage() {
 
   // ── Non-admin view ──────────────────────────────────────────────────────────
   if (!isAdmin) {
+    const state = getDraftLifecycleState(hasDraft, isLocked, seasonStarted)
     return (
       <AppShell title="Draft Room">
-        <div className="flex items-center gap-2 mb-5">
-          <Badge variant={isLocked ? 'success' : hasDraft ? 'warning' : 'muted'}>
-            {isLocked ? '🔒 Locked' : hasDraft ? '⏳ In progress' : '⏳ Not yet run'}
-          </Badge>
-          {draftRuns.length > 0 && <span className="text-xs text-[var(--text-muted)]">{formatDate(draftRuns[0].generated_at)}</span>}
-        </div>
+        <DraftStatusBanner state={state} runDate={draftRuns[0]?.generated_at} />
 
         {!hasDraft ? (
           <EmptyState icon="🎯" title="Draft not yet run" description="The admin hasn't set up the draw yet. Check back soon." />
         ) : (
           <>
-            {isLocked && (
-              <div className="mb-4 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-emerald-400 text-base">🔒</span>
-                <span className="text-xs text-emerald-300 font-medium">Draft is locked — teams are assigned</span>
-              </div>
-            )}
             <div className="space-y-2">
               {currentAlloc.map(({ player, teams, euCount }, i) => (
                 <Card key={i}>
@@ -425,16 +451,28 @@ export default function DraftPage() {
   }
 
   // ── Admin view ──────────────────────────────────────────────────────────────
+  const adminState = getDraftLifecycleState(hasDraft, isLocked, seasonStarted)
+  const setupCollapsed = adminState === 'archived' && !showSetup
+
   return (
     <AppShell title="Draft Room">
-      <div className="flex items-center gap-2 mb-4">
-        <Badge variant={isLocked ? 'success' : hasDraft ? 'warning' : 'muted'}>
-          {isLocked ? '🔒 Locked' : hasDraft ? '⚠️ Unlocked' : '⏳ No draft'}
-        </Badge>
-        <span className="text-xs text-[var(--text-secondary)]">{draftRuns.length > 0 ? `Run #${draftRuns[0].run_number}` : 'No runs yet'}</span>
-        {draftRuns.length > 0 && <span className="text-xs text-[var(--text-muted)]">· {formatDate(draftRuns[0].generated_at)}</span>}
-      </div>
+      <DraftStatusBanner state={adminState} runDate={draftRuns[0]?.generated_at} />
+      {draftRuns.length > 0 && (
+        <p className="text-xs text-[var(--text-muted)] -mt-3 mb-4">Run #{draftRuns[0].run_number}</p>
+      )}
 
+      {setupCollapsed ? (
+        <Card className="mb-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--text-primary)]">Draft setup is hidden</p>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">The season is underway, so the draft is treated as history. Only open this if you specifically need to change it.</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => setShowSetup(true)} className="shrink-0">Show</Button>
+          </div>
+        </Card>
+      ) : (
+      <>
       {competitions.length > 0 && (
         <Card className="mb-4">
           <div className="flex items-center justify-between mb-3">
@@ -629,7 +667,14 @@ export default function DraftPage() {
         <div className="space-y-2 mb-4">
           <div className="text-center py-3 text-sm text-[var(--text-secondary)]">Draft is locked. Teams are assigned.</div>
           <Button onClick={handleUnlock} variant="danger" className="w-full">🔓 Unlock draft</Button>
+          {adminState === 'archived' && (
+            <button onClick={() => setShowSetup(false)} className="w-full text-center text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] py-1">
+              Hide draft setup
+            </button>
+          )}
         </div>
+      )}
+      </>
       )}
 
       {error && <div className="mb-4 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</div>}
