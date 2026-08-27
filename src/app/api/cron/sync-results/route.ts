@@ -90,10 +90,12 @@ export async function GET(request: Request) {
         const url = `${BBS_BASE}/matches?sport=football&league=${league}&status=finished&season=${currentSeason()}&limit=200`
         const r = await fetch(url, { headers: { Authorization: `Bearer ${bbsToken}` } })
         if (r.ok) {
-          matches = await r.json()
-          warnings.push(`BigBalls ${league} returned ${Array.isArray(matches) ? matches.length : 0} finished matches`)
+          const raw = await r.json()
+          matches = Array.isArray(raw) ? raw : (raw.matches ?? raw.data ?? [])
+          warnings.push(`BigBalls ${league} returned ${matches.length} finished matches (raw shape: ${Array.isArray(raw) ? 'array' : Object.keys(raw).join(',')})`)
         } else {
-          warnings.push(`BigBalls ${league} HTTP ${r.status}`)
+          const body = await r.text()
+          warnings.push(`BigBalls ${league} HTTP ${r.status}: ${body.substring(0, 300)}`)
         }
       } catch (e: any) {
         warnings.push(`BigBalls ${league} fetch error: ${e?.message}`)
