@@ -102,8 +102,9 @@ export async function GET(request: Request) {
         warnings.push(`SportsDB ${sdbId} fetch error: ${e?.message}`)
       }
 
+      const FINISHED_STATUSES = new Set(['Match Finished', 'FT', 'AET', 'Penalties', 'FT_PEN'])
       for (const match of sdbEvents) {
-        if (match.strStatus !== 'Match Finished') continue
+        if (!FINISHED_STATUSES.has(match.strStatus)) continue
         const matchDate = match.dateEvent as string
         if (!matchDate) continue
         const homeScore = parseInt(match.intHomeScore ?? '')
