@@ -798,6 +798,11 @@ function DonPicker({
       ) : (
         <p className="text-[10px] text-[var(--text-muted)] italic">No fixtures found in {formatMonth(donMonth)}</p>
       )}
+      {monthFixtures.length > 0 && (
+        <p className="text-[10px] text-[var(--text-muted)]">
+          You can cancel anytime before a covered match kicks off. Once a match starts, that result is locked in for good.
+        </p>
+      )}
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={onConfirm}
@@ -1048,13 +1053,18 @@ function PowerUpTiles({
               )}
 
               {reverseFixtureId && (
-                <button
-                  onClick={confirmReverse}
-                  disabled={!!activating}
-                  className="w-full mt-1 py-2.5 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-500 transition-colors disabled:opacity-50 min-h-[44px]"
-                >
-                  {activating ? 'Activating…' : '🔄 Confirm Reverse'}
-                </button>
+                <>
+                  <p className="text-[10px] text-amber-400">
+                    ⚠️ This cannot be undone once confirmed — ownership swaps with {reverseTarget.player.name.split(' ')[0]} for this match, permanently.
+                  </p>
+                  <button
+                    onClick={confirmReverse}
+                    disabled={!!activating}
+                    className="w-full mt-1 py-2.5 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-500 transition-colors disabled:opacity-50 min-h-[44px]"
+                  >
+                    {activating ? 'Activating…' : '🔄 Confirm Reverse'}
+                  </button>
+                </>
               )}
             </div>
           )}
