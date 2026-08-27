@@ -48,10 +48,11 @@ export default function ScoringSettingsPage() {
     const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (lg) {
-      let [{ data: r }, { data: adminSettings }] = await Promise.all([
+      const [{ data: rInitial }, { data: adminSettings }] = await Promise.all([
         supabase.from('scoring_rules').select('*').eq('league_id', lg.id),
         supabase.from('admin_settings').select('*').eq('league_id', lg.id),
       ])
+      let r = rInitial
       // Leagues created before scoring_rules seeding existed (or any league
       // that otherwise ends up with none) would show this whole page with
       // no editable rows and no way to fix it from the UI. Self-heal by
