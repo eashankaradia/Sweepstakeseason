@@ -25,6 +25,9 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const [homeScore, setHomeScore] = useState<any>(null)
   const [awayScore, setAwayScore] = useState<any>(null)
   const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([])
+  const [h2h, setH2h] = useState<any[]>([])
+  const [homeInsights, setHomeInsights] = useState<{ standing: any; elo: any } | null>(null)
+  const [awayInsights, setAwayInsights] = useState<{ standing: any; elo: any } | null>(null)
   const [powerUps, setPowerUps] = useState<any[]>([])
   const [allOwners, setAllOwners] = useState<Map<string, Player>>(new Map())
   const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
@@ -85,17 +88,28 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
     const psMap = new Map((playerScores ?? []).map((ps: any) => [ps.player_id, ps.total_points as number]))
     setAllPlayerScores(psMap)
 
-    const [{ data: hs }, { data: as_ }] = await Promise.all([
+    const [{ data: hs }, { data: as_ }, { data: h2hFixtures }] = await Promise.all([
       supabase.from('team_scores').select('*').eq('league_id', fix.league_id).eq('team_id', fix.home_team_id).maybeSingle(),
       supabase.from('team_scores').select('*').eq('league_id', fix.league_id).eq('team_id', fix.away_team_id).maybeSingle(),
+      supabase.from('fixtures')
+        .select('id, home_team_id, away_team_id, home_score, away_score, kickoff_time')
+        .eq('league_id', fix.league_id)
+        .eq('status', 'completed')
+        .neq('id', id)
+        .or(`and(home_team_id.eq.${fix.home_team_id},away_team_id.eq.${fix.away_team_id}),and(home_team_id.eq.${fix.away_team_id},away_team_id.eq.${fix.home_team_id})`)
+        .order('kickoff_time', { ascending: false })
+        .limit(10),
     ])
     setHomeScore(hs)
     setAwayScore(as_)
+    setH2h(h2hFixtures ?? [])
 
     setLoading(false)
 
     if (fix.status === 'completed') {
       fetchEvents(id)
+    } else {
+      fetchMatchup(fix.home_team_id, fix.away_team_id)
     }
   }, [id])
 
@@ -105,6 +119,17 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
       if (!res.ok) return
       const { events } = await res.json()
       setMatchEvents(parseBbsEvents(events ?? []))
+    } catch { /* ignore */ }
+  }
+
+  const fetchMatchup = async (homeTeamId: string, awayTeamId: string) => {
+    try {
+      const [h, a] = await Promise.all([
+        fetch(`/api/teams/${homeTeamId}/insights`).then(r => r.ok ? r.json() : null),
+        fetch(`/api/teams/${awayTeamId}/insights`).then(r => r.ok ? r.json() : null),
+      ])
+      setHomeInsights(h)
+      setAwayInsights(a)
     } catch { /* ignore */ }
   }
 
@@ -285,11 +310,31 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
         />
       )}
 
+      {/* Win probability preview (Elo-based, pre-match only) */}
+      {!isCompleted && homeInsights?.elo && awayInsights?.elo && (
+        <WinProbabilityCard
+          homeName={fixture.home_team?.short_name || fixture.home_team?.name}
+          awayName={fixture.away_team?.short_name || fixture.away_team?.name}
+          homeElo={homeInsights.elo.rating}
+          awayElo={awayInsights.elo.rating}
+        />
+      )}
+
       {/* Team season stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <TeamStatCard team={fixture.home_team} score={homeScore} owners={homeOwner} />
         <TeamStatCard team={fixture.away_team} score={awayScore} owners={awayOwner} />
       </div>
+
+      {/* Head-to-head record */}
+      {h2h.length > 0 && (
+        <HeadToHeadCard
+          fixtures={h2h}
+          homeTeamId={fixture.home_team_id}
+          homeName={fixture.home_team?.short_name || fixture.home_team?.name}
+          awayName={fixture.away_team?.short_name || fixture.away_team?.name}
+        />
+      )}
 
       {/* Projected leaderboard (live only — points not yet synced) */}
       {isLive && homePts != null && awayPts != null && allOwners.size > 0 && (
@@ -427,6 +472,113 @@ function MatchTimeline({
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function WinProbabilityCard({
+  homeName, awayName, homeElo, awayElo,
+}: {
+  homeName: string
+  awayName: string
+  homeElo: number
+  awayElo: number
+}) {
+  const HOME_ADVANTAGE = 60
+  const diff = (homeElo + HOME_ADVANTAGE) - awayElo
+  const homeStrength = 1 / (1 + Math.pow(10, -diff / 400))
+  const drawProb = Math.max(0.12, Math.min(0.30, 0.28 - Math.abs(diff) / 4000))
+  const remaining = 1 - drawProb
+  const homeWinProb = remaining * homeStrength
+  const awayWinProb = remaining * (1 - homeStrength)
+
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 mb-3">
+      <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-2">
+        Win probability <span className="normal-case text-[var(--text-muted)]/70">(Elo-based estimate)</span>
+      </p>
+      <div className="flex h-2 rounded-full overflow-hidden mb-2">
+        <div className="h-full bg-emerald-500" style={{ width: pct(homeWinProb) }} />
+        <div className="h-full bg-amber-500" style={{ width: pct(drawProb) }} />
+        <div className="h-full bg-red-500" style={{ width: pct(awayWinProb) }} />
+      </div>
+      <div className="grid grid-cols-3 gap-1 text-center">
+        <div>
+          <p className="text-sm font-black text-emerald-400">{pct(homeWinProb)}</p>
+          <p className="text-[9px] text-[var(--text-muted)] truncate">{homeName}</p>
+        </div>
+        <div>
+          <p className="text-sm font-black text-amber-400">{pct(drawProb)}</p>
+          <p className="text-[9px] text-[var(--text-muted)]">Draw</p>
+        </div>
+        <div>
+          <p className="text-sm font-black text-red-400">{pct(awayWinProb)}</p>
+          <p className="text-[9px] text-[var(--text-muted)] truncate">{awayName}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HeadToHeadCard({
+  fixtures, homeTeamId, homeName, awayName,
+}: {
+  fixtures: any[]
+  homeTeamId: string
+  homeName: string
+  awayName: string
+}) {
+  let homeWins = 0, draws = 0, awayWins = 0
+  for (const f of fixtures) {
+    if (f.home_score == null || f.away_score == null) continue
+    const homeSideScore = f.home_team_id === homeTeamId ? f.home_score : f.away_score
+    const awaySideScore = f.home_team_id === homeTeamId ? f.away_score : f.home_score
+    if (homeSideScore > awaySideScore) homeWins++
+    else if (homeSideScore === awaySideScore) draws++
+    else awayWins++
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden mb-3">
+      <div className="px-3 py-2 border-b border-[var(--border)]">
+        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Head-to-head</p>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="flex items-center justify-center gap-4 mb-3">
+          <div className="text-center">
+            <p className="text-lg font-black text-[var(--text-primary)]">{homeWins}</p>
+            <p className="text-[9px] text-[var(--text-muted)] truncate max-w-[64px]">{homeName} wins</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-[var(--text-muted)]">{draws}</p>
+            <p className="text-[9px] text-[var(--text-muted)]">Draws</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-[var(--text-primary)]">{awayWins}</p>
+            <p className="text-[9px] text-[var(--text-muted)] truncate max-w-[64px]">{awayName} wins</p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {fixtures.slice(0, 5).map((f) => {
+            const isHomeHome = f.home_team_id === homeTeamId
+            return (
+              <div key={f.id} className="flex items-center justify-between text-[10px]">
+                <span className="text-[var(--text-secondary)] truncate flex-1">
+                  {isHomeHome ? homeName : awayName} vs {isHomeHome ? awayName : homeName}
+                </span>
+                <span className="font-semibold text-[var(--text-primary)] shrink-0 ml-2">
+                  {f.home_score}–{f.away_score}
+                </span>
+                <span className="text-[var(--text-muted)] shrink-0 ml-2 w-12 text-right">
+                  {f.kickoff_time ? new Date(f.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

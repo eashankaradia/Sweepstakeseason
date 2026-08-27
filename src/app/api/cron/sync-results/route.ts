@@ -55,12 +55,23 @@ export async function GET(request: Request) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     const cutoff = new Date(Date.now() - 95 * 60 * 1000).toISOString()
 
-    const { data: pending } = await supabase
-      .from('fixtures')
-      .select('id, home_team_id, away_team_id, kickoff_time, competitions!inner(espn_slug, competition_type)')
-      .in('status', ['scheduled', 'live'])
-      .not('external_id', 'is', null)
-      .lt('kickoff_time', cutoff)
+    const [{ data: pendingUpcoming }, { data: pendingBackfill }] = await Promise.all([
+      supabase
+        .from('fixtures')
+        .select('id, home_team_id, away_team_id, kickoff_time, competitions!inner(espn_slug, competition_type)')
+        .in('status', ['scheduled', 'live'])
+        .not('external_id', 'is', null)
+        .lt('kickoff_time', cutoff),
+      // Backfill: fixtures already marked completed (e.g. by an earlier version of this
+      // sync that didn't record the BigBallsData match id) but still missing a bbs: external_id
+      // needed for match-events lookups.
+      supabase
+        .from('fixtures')
+        .select('id, home_team_id, away_team_id, kickoff_time, competitions!inner(espn_slug, competition_type)')
+        .eq('status', 'completed')
+        .not('external_id', 'like', 'bbs:%'),
+    ])
+    const pending = [...(pendingUpcoming ?? []), ...(pendingBackfill ?? [])]
 
     if (!pending?.length) {
       return NextResponse.json({ message: 'Nothing to sync', synced: 0 })
@@ -81,7 +92,7 @@ export async function GET(request: Request) {
       slugGroups.get(slug)!.fixtures.push(f)
     }
 
-    const preloadedResults: { fixture_id: string; home_score: number; away_score: number }[] = []
+    const preloadedResults: { fixture_id: string; home_score: number; away_score: number; external_id: string }[] = []
     const warnings: string[] = []
 
     for (const { league, fixtures } of slugGroups.values()) {
@@ -116,8 +127,8 @@ export async function GET(request: Request) {
           return nameMatches(dbHome, m.home?.name ?? '') && nameMatches(dbAway, m.away?.name ?? '')
         })
 
-        if (fixture && !preloadedResults.some((p) => p.fixture_id === fixture.id)) {
-          preloadedResults.push({ fixture_id: fixture.id, home_score: homeScore, away_score: awayScore })
+        if (fixture && m.id && !preloadedResults.some((p) => p.fixture_id === fixture.id)) {
+          preloadedResults.push({ fixture_id: fixture.id, home_score: homeScore, away_score: awayScore, external_id: `bbs:${m.id}` })
         }
       }
     }
