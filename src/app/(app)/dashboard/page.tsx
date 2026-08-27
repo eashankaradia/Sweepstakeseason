@@ -26,7 +26,6 @@ export default function DashboardPage() {
   const [weekFixtures, setWeekFixtures] = useState<any[]>([])
   const [myPowerUps, setMyPowerUps] = useState<any[]>([])
   const [myTeams, setMyTeams] = useState<any[]>([])
-  const [myTeamPoints, setMyTeamPoints] = useState<Map<string, number>>(new Map())
   const [myTeamUpcoming, setMyTeamUpcoming] = useState<Map<string, any[]>>(new Map())
   const [powerUpFeed, setPowerUpFeed] = useState<any[]>([])
   const [myUserId, setMyUserId] = useState<string | null>(null)
@@ -74,7 +73,6 @@ export default function DashboardPage() {
       { data: todayFix },
       { data: fullActivity },
       { data: weekFix },
-      { data: teamScores },
     ] = await Promise.all([
       supabase.from('players').select('*').eq('league_id', lg.id).order('position', { ascending: true, nullsFirst: false }),
       supabase.from('player_scores').select('*').eq('league_id', lg.id),
@@ -101,7 +99,6 @@ export default function DashboardPage() {
         .lte('kickoff_time', `${weekEndStr}T23:59:59`)
         .order('kickoff_time')
         .limit(30),
-      supabase.from('team_scores').select('team_id, total_points').eq('league_id', lg.id),
     ])
 
     // Owner map: team_id → player[]
@@ -121,13 +118,6 @@ export default function DashboardPage() {
       }
     }
     setOwnerMap(oMap)
-
-    // Points earned per team so far
-    const ptsMap = new Map<string, number>()
-    for (const ts of (teamScores ?? []) as any[]) {
-      ptsMap.set(ts.team_id, (ptsMap.get(ts.team_id) ?? 0) + (ts.total_points ?? 0))
-    }
-    setMyTeamPoints(ptsMap)
 
     // Weekly pts + form
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
@@ -448,7 +438,6 @@ export default function DashboardPage() {
               <MyTeamFixtureRow
                 key={team.id}
                 team={team}
-                points={myTeamPoints.get(team.id) ?? 0}
                 fixtures={myTeamUpcoming.get(team.id) ?? []}
                 ownerMap={ownerMap}
               />
@@ -508,22 +497,20 @@ function MatchdayHeader({ league, liveCount, todayCount, weekFixtures }: {
 // ─── Team crest strip ──────────────────────────────────────────────────────────
 
 function TeamCrestStrip({ teams }: { teams: any[] }) {
-  const many = teams.length > 7
+  const many = teams.length > 6
   return (
-    <div className={`mb-5 ${many ? 'scroll-x -mx-4 px-4 flex gap-3' : 'flex items-center justify-between'}`}>
+    <div className={`mb-5 ${many ? 'scroll-x -mx-4 px-4 flex gap-3' : 'flex items-center justify-between gap-2'}`}>
       {teams.map(team => (
         <Link
           key={team.id}
           href={`/teams/${team.id}`}
-          className={`pressable flex flex-col items-center gap-1 ${many ? 'shrink-0 w-14' : 'flex-1'}`}
+          className={`pressable flex items-center justify-center ${many ? 'shrink-0' : 'flex-1'}`}
           title={team.name}
+          aria-label={team.name}
         >
-          <div className="w-11 h-11 flex items-center justify-center rounded-full bg-[var(--bg-card)] border border-[var(--border)]">
-            <TeamCrest team={team} size="md" />
+          <div className="w-16 h-16 flex items-center justify-center rounded-full bg-[var(--bg-card)] border border-[var(--border)]">
+            <TeamCrest team={team} size="lg" />
           </div>
-          <span className="text-[9px] text-[var(--text-secondary)] text-center truncate w-full">
-            {team.short_name || team.name}
-          </span>
         </Link>
       ))}
     </div>
@@ -768,21 +755,19 @@ function CrestWithOwnerBadge({ team, ownerMap }: { team: any; ownerMap: Map<stri
   )
 }
 
-function MyTeamFixtureRow({ team, points, fixtures, ownerMap }: {
-  team: any; points: number; fixtures: any[]; ownerMap: Map<string, any[]>
+function MyTeamFixtureRow({ team, fixtures, ownerMap }: {
+  team: any; fixtures: any[]; ownerMap: Map<string, any[]>
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-      <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-[var(--border)]">
-        <TeamCrest team={team} size="sm" />
-        <span className="text-sm font-semibold text-[var(--text-primary)] flex-1 truncate">{team.name}</span>
-        <span className="text-xs font-bold text-[var(--text-primary)] tabular-nums">{points}</span>
-        <span className="text-[9px] text-[var(--text-muted)]">pts for you</span>
-      </div>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] flex items-center gap-3 px-3 py-2.5">
+      <Link href={`/teams/${team.id}`} className="pressable shrink-0" title={team.name}>
+        <TeamCrest team={team} size="md" />
+      </Link>
+      <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
       {fixtures.length === 0 ? (
-        <p className="text-[11px] text-[var(--text-muted)] px-3 py-2.5">No upcoming fixtures scheduled yet</p>
+        <p className="text-[11px] text-[var(--text-muted)] flex-1">No upcoming fixtures scheduled yet</p>
       ) : (
-        <div className="flex items-center gap-3 px-3 py-2.5 overflow-x-auto">
+        <div className="flex items-center gap-3 flex-1 overflow-x-auto">
           {fixtures.map(f => {
             const opponent = f.home_team_id === team.id ? f.away_team : f.home_team
             return (

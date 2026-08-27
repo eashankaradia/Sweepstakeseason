@@ -604,20 +604,19 @@ function TablesView({
 
   function OwnerPills({ owners }: { owners: any[] }) {
     if (owners.length === 0) return <span className="text-[9px] text-[var(--text-muted)]">—</span>
+    const primary = owners[0]
+    const extra = owners.length - 1
     return (
-      <div className="flex flex-nowrap gap-1 overflow-hidden">
-        {owners.slice(0, 3).map((o: any) => (
-          <Link
-            key={o.id}
-            href={`/players/${o.id}`}
-            onClick={e => e.stopPropagation()}
-            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none shrink-0 hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: `${o.color}20`, color: o.color, border: `1px solid ${o.color}40` }}
-          >
-            {o.name.split(' ')[0]}
-          </Link>
-        ))}
-      </div>
+      <Link
+        href={`/players/${primary.id}`}
+        onClick={e => e.stopPropagation()}
+        className="inline-flex items-center gap-1 max-w-full text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none hover:opacity-80 transition-opacity"
+        style={{ backgroundColor: `${primary.color}20`, color: primary.color, border: `1px solid ${primary.color}40` }}
+        title={owners.map((o: any) => o.name).join(', ')}
+      >
+        <span className="truncate">{primary.name.split(' ')[0]}</span>
+        {extra > 0 && <span className="shrink-0">+{extra}</span>}
+      </Link>
     )
   }
 
@@ -644,12 +643,12 @@ function TablesView({
         ← scroll for W/D/L/GD →
       </div>
       <div className="overflow-x-auto">
-        <div style={{ minWidth: 500 }}>
+        <div style={{ minWidth: 400 }}>
           <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
             <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
             <span className="w-6 shrink-0" />
-            <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
-            <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
+            <span className="w-[92px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
+            <span className="w-[72px] text-[9px] text-[var(--text-muted)] shrink-0">Owner</span>
             <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
             <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
             <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
@@ -669,10 +668,10 @@ function TablesView({
               >
                 <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
                 <div className="w-6 shrink-0"><TeamCrest team={row.team} size="xs" /></div>
-                <div className="w-[110px] shrink-0 min-w-0 pr-1">
+                <div className="w-[92px] shrink-0 min-w-0 pr-1">
                   <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
                 </div>
-                <div className="flex-1 min-w-0 pr-2">
+                <div className="w-[72px] shrink-0 min-w-0 pr-1">
                   <OwnerPills owners={row.owners} />
                 </div>
                 <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.pts}</span>

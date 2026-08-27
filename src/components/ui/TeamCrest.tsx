@@ -5,7 +5,7 @@ import type { Team } from '@/lib/supabase/types'
 
 interface TeamCrestProps {
   team: Pick<Team, 'name' | 'short_name' | 'primary_color' | 'secondary_color'> & { logo_url?: string | null }
-  size?: 'xs' | 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }
 
@@ -14,6 +14,7 @@ const sizes = {
   sm: 'w-8 h-8 text-[10px]',
   md: 'w-10 h-10 text-xs',
   lg: 'w-14 h-14 text-sm',
+  xl: 'w-16 h-16 text-base',
 }
 
 const imgSizes = {
@@ -21,6 +22,7 @@ const imgSizes = {
   sm: 32,
   md: 40,
   lg: 56,
+  xl: 64,
 }
 
 const FALLBACK_LOGOS: Record<string, string> = {
