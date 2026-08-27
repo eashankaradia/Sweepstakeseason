@@ -90,7 +90,6 @@ export default function StandingsPage() {
   const [standings, setStandings] = useState<StandingEntry[]>([])
   const [monthlyGroups, setMonthlyGroups] = useState<MonthGroup[]>([])
   const [lastMonthPositions, setLastMonthPositions] = useState<Map<string, number>>(new Map())
-  const [competitions, setCompetitions] = useState<any[]>([])
   const [teamScores, setTeamScores] = useState<any[]>([])
   const [teamCompetitions, setTeamCompetitions] = useState<any[]>([])
   const [assignments, setAssignments] = useState<any[]>([])
@@ -100,8 +99,8 @@ export default function StandingsPage() {
   const [hasDraft, setHasDraft] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [tab, setTab] = useState<'overall' | 'monthly' | 'insights'>('overall')
-  const [insightsTab, setInsightsTab] = useState<'tables' | 'charts' | 'heatmap'>('tables')
+  const [tab, setTab] = useState<'leaderboard' | 'monthly'>('leaderboard')
+  const [insightsTab, setInsightsTab] = useState<'tables' | 'charts'>('tables')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activityFeed, setActivityFeed] = useState<any[]>([])
   const [recentMatches, setRecentMatches] = useState<any[]>([])
@@ -132,7 +131,6 @@ export default function StandingsPage() {
       { data: assignmentsData },
       { data: monthly },
       { data: teamScoresData },
-      { data: compsData },
       { data: tcData },
       { data: recentMatchData },
       { data: actFeedData },
@@ -142,7 +140,6 @@ export default function StandingsPage() {
       supabase.from('player_team_assignments').select('*, teams(*)').eq('league_id', lg.id),
       supabase.rpc('get_monthly_standings', { p_league_id: lg.id }),
       supabase.from('team_scores').select('*, teams(*)').eq('league_id', lg.id),
-      supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order'),
       supabase.from('team_competitions').select('team_id, competition_id, teams(*)').eq('league_id', lg.id),
       supabase.from('fixtures')
         .select('id, home_team_id, away_team_id, home_score, away_score, kickoff_time')
@@ -161,7 +158,6 @@ export default function StandingsPage() {
     setAssignments(assignmentsData ?? [])
     setPlayers(playersData ?? [])
     setTeamScores(teamScoresData ?? [])
-    setCompetitions(compsData ?? [])
     setTeamCompetitions(tcData ?? [])
     setRecentMatches([...(recentMatchData ?? [])].reverse())
     setActivityFeed(actFeedData ?? [])
@@ -299,26 +295,26 @@ export default function StandingsPage() {
 
       <TabBar
         tabs={[
-          { key: 'overall', label: 'Overall' },
+          { key: 'leaderboard', label: 'Leaderboard' },
           { key: 'monthly', label: 'Monthly' },
-          { key: 'insights', label: 'Insights' },
         ]}
         active={tab}
         onChange={v => setTab(v as any)}
         className="mb-4"
       />
 
-      {tab === 'overall' && (
+      {tab === 'leaderboard' && (
         standings.length === 0
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
-            <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-              <p className="text-[10px] text-[var(--text-secondary)] px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
-                <span className="font-semibold text-purple-400">Bonus pts</span> reward bottom-3 teams for wins · <span className="font-semibold text-emerald-400">▲</span>/<span className="font-semibold text-red-400">▼</span> shows movement vs last month · tap a row for details
+            <>
+            <div className="rounded-xl border border-[var(--border)] overflow-hidden mb-5">
+              <p className="text-[10px] text-[var(--text-secondary)] px-3 py-2.5 bg-[var(--bg-card)] border-b border-[var(--border)] leading-relaxed">
+                <span className="font-semibold text-purple-400">Bonus pts</span> reward Giant Killer wins · <span className="font-semibold text-emerald-400">▲</span>/<span className="font-semibold text-red-400">▼</span> shows movement vs last month · tap a row for details
               </p>
               {/* Column header */}
               <div className="bg-[var(--bg-card)] border-b border-[var(--border)]">
-                <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2">
+                <div className="grid grid-cols-[32px_1fr_80px_38px_50px] items-center gap-2 px-3 py-2.5">
                   <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-center">#</span>
                   <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Player</span>
                   <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-center">Form</span>
@@ -353,7 +349,7 @@ export default function StandingsPage() {
                       onClick={() => toggleExpanded(entry.player.id)}
                       className="w-full text-left"
                     >
-                      <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2.5 min-h-[48px]">
+                      <div className="grid grid-cols-[32px_1fr_80px_38px_50px] items-center gap-2 px-3 py-3 min-h-[52px]">
                         {/* Position with movement arrow */}
                         <div className="flex items-center justify-center gap-0.5 h-full">
                           <div className="flex flex-col items-center leading-none">
@@ -472,91 +468,97 @@ export default function StandingsPage() {
                 )
               })}
             </div>
+
+            <TabBar
+              tabs={[
+                { key: 'tables', label: 'Team standings' },
+                { key: 'charts', label: 'Charts' },
+              ]}
+              active={insightsTab}
+              onChange={v => setInsightsTab(v as any)}
+              className="mb-4"
+            />
+
+            {insightsTab === 'tables' && (
+              <TablesView
+                teamScores={teamScores}
+                teamCompetitions={teamCompetitions}
+                ownerMap={ownerMap}
+              />
+            )}
+
+            {insightsTab === 'charts' && (
+              <ChartsView
+                players={players}
+                assignments={assignments}
+                activityFeed={activityFeed}
+                recentMatches={recentMatches}
+              />
+            )}
+            </>
           )
       )}
 
       {tab === 'monthly' && (
         <MonthlyView groups={monthlyGroups} myUserId={myUserId} />
       )}
-
-      {tab === 'insights' && (
-        <div>
-          <TabBar
-            tabs={[
-              { key: 'tables', label: 'Tables' },
-              { key: 'charts', label: 'Charts' },
-              { key: 'heatmap', label: 'Heatmap' },
-            ]}
-            active={insightsTab}
-            onChange={v => setInsightsTab(v as any)}
-            className="mb-4"
-          />
-
-          {insightsTab === 'tables' && (
-            <TablesView
-              competitions={competitions}
-              teamScores={teamScores}
-              teamCompetitions={teamCompetitions}
-              ownerMap={ownerMap}
-            />
-          )}
-
-          {insightsTab === 'charts' && (
-            <ChartsView
-              players={players}
-              assignments={assignments}
-              activityFeed={activityFeed}
-              recentMatches={recentMatches}
-            />
-          )}
-
-          {insightsTab === 'heatmap' && (
-            <HeatmapView
-              players={players}
-              competitions={competitions}
-              teamCompetitions={teamCompetitions}
-              assignments={assignments}
-              myUserId={myUserId}
-            />
-          )}
-        </div>
-      )}
     </AppShell>
   )
 }
 
 function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: string | null }) {
+  const currentMonth = new Date().toISOString().substring(0, 7)
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set([currentMonth]))
+
   if (groups.length === 0) {
     return <EmptyState icon="📅" title="No monthly data yet" description="Monthly breakdowns appear once match results come in." />
   }
 
-  const currentMonth = new Date().toISOString().substring(0, 7)
+  function toggleMonth(month: string) {
+    setExpandedMonths(prev => {
+      const next = new Set(prev)
+      if (next.has(month)) next.delete(month)
+      else next.add(month)
+      return next
+    })
+  }
+
   const sortedGroups = [...groups].sort((a, b) => b.month.localeCompare(a.month))
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {sortedGroups.map(({ month, rows }) => {
         const label = new Date(month + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
         const winner = rows[0]
         const last = rows[rows.length - 1]
         const isCurrent = month === currentMonth
+        const isExpanded = expandedMonths.has(month)
         return (
           <div key={month} className={`rounded-xl border overflow-hidden ${isCurrent ? 'border-[var(--accent)]/40' : 'border-[var(--border)]'}`}>
-            <div className={`px-3 py-2 border-b flex items-center justify-between ${isCurrent ? 'bg-[var(--accent)]/8 border-[var(--accent)]/30' : 'bg-[var(--bg-card)] border-[var(--border)]'}`}>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
+            <button
+              onClick={() => toggleMonth(month)}
+              className={`w-full px-3 py-2.5 min-h-11 border-b flex items-center justify-between gap-2 text-left ${isCurrent ? 'bg-[var(--accent)]/8 border-[var(--accent)]/30' : 'bg-[var(--bg-card)] border-[var(--border)]'}`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <svg
+                  width="10" height="10" viewBox="0 0 10 10"
+                  className={`shrink-0 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                >
+                  <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="font-semibold text-sm text-[var(--text-primary)] truncate">{label}</span>
                 {isCurrent && (
-                  <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full">Current</span>
+                  <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full shrink-0">Current</span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+              <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] shrink-0">
                 {winner && <span className="text-amber-400 font-medium">🥇 {winner.player_name}</span>}
                 {last && last.player_id !== winner?.player_id && (
                   <span className="text-red-400 font-medium">🪣 {last.player_name}</span>
                 )}
               </div>
-            </div>
-            {rows.map((row, idx) => {
+            </button>
+            {isExpanded && rows.map((row, idx) => {
               const isMe = row.player_id === myUserId
               return (
                 <div
@@ -588,34 +590,18 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
 }
 
 function TablesView({
-  competitions,
   teamScores,
   teamCompetitions,
   ownerMap,
 }: {
-  competitions: any[]
   teamScores: any[]
   teamCompetitions: any[]
   ownerMap: Map<string, any[]>
 }) {
-  if (competitions.length === 0) {
-    return <EmptyState icon="📊" title="No competitions" description="Enable competitions in Settings." />
+  const teams = [...new Map(teamCompetitions.filter(tc => tc.teams).map((tc: any) => [tc.teams.id, tc.teams])).values()]
+  if (teams.length === 0) {
+    return <EmptyState icon="📊" title="No teams yet" description="Choose the team pool in Settings and run the draft." />
   }
-
-  const compTeamMap = new Map<string, any[]>()
-  for (const tc of teamCompetitions) {
-    if (!tc.teams) continue
-    if (!compTeamMap.has(tc.competition_id)) compTeamMap.set(tc.competition_id, [])
-    const list = compTeamMap.get(tc.competition_id)!
-    if (!list.find((t: any) => t.id === tc.teams.id)) list.push(tc.teams)
-  }
-
-  const typeOrder: Record<string, number> = { domestic_league: 0, european: 1 }
-  const sortedComps = [...competitions]
-    .filter(c => c.competition_type !== 'domestic_cup')
-    .sort((a, b) =>
-      (typeOrder[a.competition_type] ?? 9) - (typeOrder[b.competition_type] ?? 9) || a.display_order - b.display_order
-    )
 
   function OwnerPills({ owners }: { owners: any[] }) {
     if (owners.length === 0) return <span className="text-[9px] text-[var(--text-muted)]">—</span>
@@ -636,107 +622,71 @@ function TablesView({
     )
   }
 
-  const SCROLL_HINT = (
-    <div className="text-[9px] text-[var(--text-muted)] text-right px-3 py-1 border-b border-[var(--border)]/30">
-      ← scroll for W/D/L/GD →
-    </div>
-  )
+  const rows = teams.map((team: any) => {
+    const scores = teamScores.filter((ts: any) => ts.team_id === team.id)
+    const aggGF = scores.reduce((s: number, ts: any) => s + (ts.goals_for ?? 0), 0)
+    const aggGA = scores.reduce((s: number, ts: any) => s + (ts.goals_against ?? 0), 0)
+    const aggW = scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0)
+    const aggD = scores.reduce((s: number, ts: any) => s + (ts.draws ?? 0), 0)
+    const aggL = scores.reduce((s: number, ts: any) => s + (ts.losses ?? 0), 0)
+    const aggPts = scores.reduce((s: number, ts: any) => s + (ts.total_points ?? 0), 0)
+    const aggP = scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0)
+    const owners = ownerMap.get(team.id) ?? []
+    return {
+      team, p: aggP, w: aggW, d: aggD, l: aggL,
+      gf: aggGF, ga: aggGA, gd: aggGF - aggGA, pts: aggPts,
+      owners,
+    }
+  }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || (a.team.league_position ?? 999) - (b.team.league_position ?? 999))
 
   return (
-    <div className="space-y-5">
-      {sortedComps.map(comp => {
-        const isEu = comp.competition_type === 'european'
-        const isCup = comp.competition_type === 'domestic_cup'
-
-        const compHeader = (
-          <div className={`px-3 py-2 flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
-            <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${isEu ? 'bg-purple-500/20 text-purple-400' : isCup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--accent)]/20 text-[var(--accent)]'}`}>
-              {comp.short_name}
-            </div>
-            <span className="font-semibold text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
+    <div className="rounded-xl border border-[var(--border)] overflow-hidden mb-5">
+      <div className="text-[9px] text-[var(--text-muted)] text-right px-3 py-1 border-b border-[var(--border)]/30 bg-[var(--bg-card)]">
+        ← scroll for W/D/L/GD →
+      </div>
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: 500 }}>
+          <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
+            <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
+            <span className="w-6 shrink-0" />
+            <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
+            <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
+            <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
+            <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
+            <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
+            <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
+            <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
+            <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
           </div>
-        )
-
-        const teams = compTeamMap.get(comp.id) ?? []
-        if (teams.length === 0) return null
-        const compRows = teams.map((team: any) => {
-          let scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === comp.id)
-          if (scores.length === 0) scores = teamScores.filter((ts: any) => ts.team_id === team.id && ts.competition_id === null)
-          if (scores.length === 0) scores = teamScores.filter((ts: any) => ts.team_id === team.id)
-          const aggGF = scores.reduce((s: number, ts: any) => s + (ts.goals_for ?? 0), 0)
-          const aggGA = scores.reduce((s: number, ts: any) => s + (ts.goals_against ?? 0), 0)
-          const aggW = scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0)
-          const aggD = scores.reduce((s: number, ts: any) => s + (ts.draws ?? 0), 0)
-          const aggL = scores.reduce((s: number, ts: any) => s + (ts.losses ?? 0), 0)
-          const aggPts = scores.reduce((s: number, ts: any) => s + (ts.total_points ?? 0), 0)
-          const aggP = scores.reduce((s: number, ts: any) => s + (ts.matches_played ?? 0), 0)
-          const owners = ownerMap.get(team.id) ?? []
-          return {
-            team, p: aggP, w: aggW, d: aggD, l: aggL,
-            gf: aggGF, ga: aggGA, gd: aggGF - aggGA, pts: aggPts,
-            owners,
-          }
-        }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || (a.team.league_position ?? 999) - (b.team.league_position ?? 999))
-
-        return (
-          <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
-            {compHeader}
-            {SCROLL_HINT}
-            <div className="overflow-x-auto">
-              <div style={{ minWidth: 500 }}>
-                <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
-                  <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
-                  <span className="w-6 shrink-0" />
-                  <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
-                  <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
-                  <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
-                  <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
-                  <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
-                  <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
-                  <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
-                  <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
+          {rows.map((row, idx) => {
+            const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+            const primaryOwner = row.owners[0]
+            return (
+              <Link
+                key={row.team.id}
+                href={`/teams/${row.team.id}`}
+                className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px] hover:bg-[var(--bg-card-hover)] transition-colors"
+                style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
+              >
+                <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
+                <div className="w-6 shrink-0"><TeamCrest team={row.team} size="xs" /></div>
+                <div className="w-[110px] shrink-0 min-w-0 pr-1">
+                  <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
                 </div>
-                {compRows.map((row, idx) => {
-                  const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
-                  const primaryOwner = row.owners[0]
-                  return (
-                    <Link
-                      key={row.team.id}
-                      href={`/teams/${row.team.id}`}
-                      className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px] hover:bg-[var(--bg-card-hover)] transition-colors"
-                      style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
-                    >
-                      <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
-                      <div className="w-6 shrink-0"><TeamCrest team={row.team} size="xs" /></div>
-                      <div className="w-[110px] shrink-0 min-w-0 pr-1">
-                        <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
-                      </div>
-                      <div className="flex-1 min-w-0 pr-2">
-                        <OwnerPills owners={row.owners} />
-                      </div>
-                      <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.pts}</span>
-                      <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.p}</span>
-                      <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.w}</span>
-                      <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.d}</span>
-                      <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.l}</span>
-                      <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="flex items-center gap-1">
-      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-[9px] text-[var(--text-muted)]">{label}</span>
+                <div className="flex-1 min-w-0 pr-2">
+                  <OwnerPills owners={row.owners} />
+                </div>
+                <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.pts}</span>
+                <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.p}</span>
+                <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.w}</span>
+                <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.d}</span>
+                <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.l}</span>
+                <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
+              </Link>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1054,140 +1004,6 @@ function ChartsView({
         assignments={assignments}
         recentMatches={recentMatches}
       />
-    </div>
-  )
-}
-
-function HeatmapView({
-  players,
-  competitions,
-  teamCompetitions,
-  assignments,
-  myUserId,
-}: {
-  players: any[]
-  competitions: any[]
-  teamCompetitions: any[]
-  assignments: any[]
-  myUserId: string | null
-}) {
-  if (players.length === 0 || assignments.length === 0) {
-    return <EmptyState icon="🗂️" title="No draft yet" description="Run the draft to see the ownership heatmap." />
-  }
-
-  const domesticLeague = competitions.find(c => c.competition_type === 'domestic_league')
-  const europeanComps = competitions.filter(c => c.competition_type === 'european')
-
-  const teamCompsMap = new Map<string, any[]>()
-  for (const tc of teamCompetitions) {
-    if (!tc.teams) continue
-    const comp = competitions.find(c => c.id === tc.competition_id)
-    if (!comp) continue
-    if (!teamCompsMap.has(tc.team_id)) teamCompsMap.set(tc.team_id, [])
-    teamCompsMap.get(tc.team_id)!.push(comp)
-  }
-
-  const plTeams = teamCompetitions
-    .filter(tc => tc.competition_id === domesticLeague?.id && tc.teams)
-    .map(tc => tc.teams)
-    .filter((t: any, i: number, arr: any[]) => arr.findIndex((u: any) => u.id === t.id) === i)
-    .sort((a: any, b: any) => (a.league_position ?? 999) - (b.league_position ?? 999) || a.name.localeCompare(b.name))
-
-  const teamOwnersMap = new Map<string, any[]>()
-  for (const a of assignments) {
-    const player = players.find(p => p.id === a.player_id)
-    if (!player) continue
-    if (!teamOwnersMap.has(a.team_id)) teamOwnersMap.set(a.team_id, [])
-    teamOwnersMap.get(a.team_id)!.push(player)
-  }
-
-  const myPlayer = myUserId ? players.find(p => p.user_id === myUserId) : null
-
-  if (plTeams.length === 0) {
-    return <EmptyState icon="🗂️" title="No teams found" description="Add teams to competitions to see the heatmap." />
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-x-3 gap-y-2 px-0.5 mb-1">
-        {players.map(p => {
-          const isMe = myPlayer ? p.id === myPlayer.id : false
-          return (
-            <div key={p.id} className="flex items-center gap-1.5">
-              <Avatar name={p.name} color={p.color} size="xs" />
-              <span className={`text-[10px] ${isMe ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                {p.name}
-                {isMe && <span className="ml-1 text-[9px] font-bold" style={{ color: p.color }}>You</span>}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-
-      {europeanComps.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {europeanComps.map(comp => (
-            <span key={comp.id} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400">
-              {comp.short_name}
-            </span>
-          ))}
-          <span className="text-[9px] text-[var(--text-muted)]">= European qualification</span>
-        </div>
-      )}
-
-      {domesticLeague && (
-        <div>
-          <div className="flex items-center gap-2 mb-2.5">
-            <div className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent)]/15 text-[var(--accent)]">
-              {domesticLeague.short_name}
-            </div>
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">{domesticLeague.name}</span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            {plTeams.map((team: any) => {
-              const owners = teamOwnersMap.get(team.id) ?? []
-              const euComps = (teamCompsMap.get(team.id) ?? []).filter(c => c.competition_type === 'european')
-              const isMyTeam = myPlayer && owners.some(o => o.id === myPlayer.id)
-              const primaryColor = owners[0]?.color
-
-              return (
-                <div
-                  key={team.id}
-                  className="rounded-lg p-2 flex flex-col items-center gap-1 border transition-colors"
-                  style={{
-                    background: primaryColor ? `${primaryColor}14` : 'var(--bg-card)',
-                    borderColor: primaryColor ? `${primaryColor}35` : 'var(--border)',
-                    boxShadow: isMyTeam ? `0 0 0 1.5px ${owners.find(o => o.id === myPlayer?.id)?.color}70` : undefined,
-                  }}
-                >
-                  <TeamCrest team={team} size="xs" />
-                  <span className="text-[9px] text-center text-[var(--text-secondary)] leading-tight line-clamp-1 w-full">
-                    {team.short_name || team.name}
-                  </span>
-                  {euComps.length > 0 && (
-                    <div className="flex gap-0.5 flex-wrap justify-center">
-                      {euComps.map((ec: any) => (
-                        <span key={ec.id} className="text-[7px] font-bold px-1 leading-4 rounded-full bg-purple-500/20 text-purple-400">
-                          {ec.short_name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {owners.length > 0 ? (
-                    <div className="flex items-center gap-0.5 flex-wrap justify-center mt-0.5">
-                      {owners.map(owner => (
-                        <Avatar key={owner.id} name={owner.name} color={owner.color} size="xs" />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-[8px] text-[var(--text-muted)]">—</span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
