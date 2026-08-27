@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import { Toggle } from '@/components/ui/Toggle'
 import type { League, ScoringRule } from '@/lib/supabase/types'
+import { DEFAULT_SCORING_RULES } from '@/lib/scoring'
 
 const GK_SETTINGS = [
   { key: 'giant_killer_enabled', label: 'Giant Killer enabled', type: 'toggle', description: 'Auto-award bonus when a team sitting in the bottom 3 of its league table wins a match' },
@@ -47,10 +48,22 @@ export default function ScoringSettingsPage() {
     const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (lg) {
-      const [{ data: r }, { data: adminSettings }] = await Promise.all([
+      const [{ data: rInitial }, { data: adminSettings }] = await Promise.all([
         supabase.from('scoring_rules').select('*').eq('league_id', lg.id),
         supabase.from('admin_settings').select('*').eq('league_id', lg.id),
       ])
+      let r = rInitial
+      // Leagues created before scoring_rules seeding existed (or any league
+      // that otherwise ends up with none) would show this whole page with
+      // no editable rows and no way to fix it from the UI. Self-heal by
+      // seeding the defaults the first time this happens.
+      if ((r ?? []).length === 0) {
+        const { data: seeded } = await supabase
+          .from('scoring_rules')
+          .insert(DEFAULT_SCORING_RULES.map(rule => ({ ...rule, league_id: lg.id })))
+          .select()
+        r = seeded ?? []
+      }
       setRules(r ?? [])
       const vals: Record<string, string> = {}
       for (const rule of (r ?? [])) { vals[rule.id] = rule.points.toString() }
