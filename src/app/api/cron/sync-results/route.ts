@@ -91,6 +91,7 @@ export async function GET(request: Request) {
         if (r.ok) {
           const d = await r.json()
           sdbEvents = d.events ?? []
+          warnings.push(`SportsDB ${sdbId} returned ${sdbEvents.length} events for ${currentSeason()}`)
         } else {
           warnings.push(`SportsDB ${sdbId} HTTP ${r.status}`)
         }
