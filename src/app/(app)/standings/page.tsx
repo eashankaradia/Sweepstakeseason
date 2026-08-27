@@ -76,14 +76,14 @@ function FormGuide({ results }: { results: FormResult[] }) {
 }
 
 function PositionChange({ movement }: { movement: number | null }) {
-  if (movement === null) return <span className="text-[8px] text-[var(--text-muted)] font-bold leading-none">NEW</span>
+  if (movement === null) return <span className="text-[9px] text-[var(--text-secondary)] font-bold leading-none mt-0.5">NEW</span>
   if (movement > 0) return (
-    <span className="text-[8px] text-emerald-400 font-black leading-none">▲{movement}</span>
+    <span className="text-[9px] text-emerald-400 font-black leading-none mt-0.5 bg-emerald-500/10 px-1 rounded-full">▲{movement}</span>
   )
   if (movement < 0) return (
-    <span className="text-[8px] text-red-400 font-black leading-none">▼{Math.abs(movement)}</span>
+    <span className="text-[9px] text-red-400 font-black leading-none mt-0.5 bg-red-500/10 px-1 rounded-full">▼{Math.abs(movement)}</span>
   )
-  return <span className="text-[8px] text-[var(--text-muted)] leading-none">—</span>
+  return <span className="text-[9px] text-[var(--text-secondary)] leading-none mt-0.5">—</span>
 }
 
 export default function StandingsPage() {
@@ -99,7 +99,8 @@ export default function StandingsPage() {
   const [league, setLeague] = useState<any>(null)
   const [hasDraft, setHasDraft] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'overall' | 'monthly' | 'tables' | 'charts' | 'heatmap'>('overall')
+  const [tab, setTab] = useState<'overall' | 'monthly' | 'insights'>('overall')
+  const [insightsTab, setInsightsTab] = useState<'tables' | 'charts' | 'heatmap'>('tables')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activityFeed, setActivityFeed] = useState<any[]>([])
   const [recentMatches, setRecentMatches] = useState<any[]>([])
@@ -275,9 +276,7 @@ export default function StandingsPage() {
         tabs={[
           { key: 'overall', label: 'Overall' },
           { key: 'monthly', label: 'Monthly' },
-          { key: 'tables', label: 'Tables' },
-          { key: 'charts', label: 'Charts' },
-          { key: 'heatmap', label: 'Heatmap' },
+          { key: 'insights', label: 'Insights' },
         ]}
         active={tab}
         onChange={v => setTab(v as any)}
@@ -289,19 +288,24 @@ export default function StandingsPage() {
           ? <EmptyState icon="👥" title="No players yet" description="Add players in Settings." />
           : (
             <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+              <p className="text-[10px] text-[var(--text-secondary)] px-3 py-2 bg-[var(--bg-card)] border-b border-[var(--border)]">
+                <span className="font-semibold text-purple-400">Bonus pts</span> reward bottom-3 teams for wins · <span className="font-semibold text-emerald-400">▲</span>/<span className="font-semibold text-red-400">▼</span> shows movement vs last month · tap a row for details
+              </p>
               {/* Column header */}
               <div className="bg-[var(--bg-card)] border-b border-[var(--border)]">
                 <div className="grid grid-cols-[30px_1fr_76px_34px_44px] items-center gap-1 px-3 py-2">
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">#</span>
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Player</span>
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">Form</span>
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-center">GD</span>
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide text-right">Pts</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-center">#</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Player</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-center">Form</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-center">GD</span>
+                  <span className="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide text-right">Pts</span>
                 </div>
               </div>
 
               {standings.map((entry, idx) => {
                 const isMe = entry.player.user_id === myUserId
+                const myIdx = standings.findIndex(s => s.player.user_id === myUserId)
+                const isRival = myIdx >= 0 && !isMe && Math.abs(idx - myIdx) === 1
                 const isExpandedPlayer = expanded.has(entry.player.id)
                 const medals = ['🥇', '🥈', '🥉']
                 const gdColor = entry.gd > 0 ? 'text-emerald-400' : entry.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
@@ -314,8 +318,11 @@ export default function StandingsPage() {
                 return (
                   <div
                     key={entry.player.id}
-                    className="border-b border-[var(--border)] last:border-0"
-                    style={{ background: isMe ? `${entry.player.color}08` : idx === 0 ? 'rgba(251,191,36,0.04)' : 'var(--bg-card)' }}
+                    className={`border-b border-[var(--border)] last:border-0 ${isRival ? 'border-l-2' : ''}`}
+                    style={{
+                      background: isMe ? `${entry.player.color}08` : idx === 0 ? 'rgba(251,191,36,0.04)' : 'var(--bg-card)',
+                      borderLeftColor: isRival ? `${standings[myIdx].player.color}50` : undefined,
+                    }}
                   >
                     <button
                       onClick={() => toggleExpanded(entry.player.id)}
@@ -447,32 +454,47 @@ export default function StandingsPage() {
         <MonthlyView groups={monthlyGroups} myUserId={myUserId} />
       )}
 
-      {tab === 'tables' && (
-        <TablesView
-          competitions={competitions}
-          teamScores={teamScores}
-          teamCompetitions={teamCompetitions}
-          ownerMap={ownerMap}
-        />
-      )}
+      {tab === 'insights' && (
+        <div>
+          <TabBar
+            tabs={[
+              { key: 'tables', label: 'Tables' },
+              { key: 'charts', label: 'Charts' },
+              { key: 'heatmap', label: 'Heatmap' },
+            ]}
+            active={insightsTab}
+            onChange={v => setInsightsTab(v as any)}
+            className="mb-4"
+          />
 
-      {tab === 'charts' && (
-        <ChartsView
-          players={players}
-          assignments={assignments}
-          activityFeed={activityFeed}
-          recentMatches={recentMatches}
-        />
-      )}
+          {insightsTab === 'tables' && (
+            <TablesView
+              competitions={competitions}
+              teamScores={teamScores}
+              teamCompetitions={teamCompetitions}
+              ownerMap={ownerMap}
+            />
+          )}
 
-      {tab === 'heatmap' && (
-        <HeatmapView
-          players={players}
-          competitions={competitions}
-          teamCompetitions={teamCompetitions}
-          assignments={assignments}
-          myUserId={myUserId}
-        />
+          {insightsTab === 'charts' && (
+            <ChartsView
+              players={players}
+              assignments={assignments}
+              activityFeed={activityFeed}
+              recentMatches={recentMatches}
+            />
+          )}
+
+          {insightsTab === 'heatmap' && (
+            <HeatmapView
+              players={players}
+              competitions={competitions}
+              teamCompetitions={teamCompetitions}
+              assignments={assignments}
+              myUserId={myUserId}
+            />
+          )}
+        </div>
       )}
     </AppShell>
   )
@@ -758,7 +780,7 @@ function LineChart({
             return (
               <g key={i}>
                 <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="var(--border)" strokeWidth="0.5" />
-                <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="8" fill="var(--text-muted)">
+                <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="9" fill="var(--text-secondary)">
                   {invertY ? Math.round(v) : Math.round(v)}
                 </text>
               </g>
@@ -768,11 +790,11 @@ function LineChart({
           <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="var(--border)" strokeWidth="0.5" />
           {/* X tick labels (every 5th game) */}
           {Array.from({ length: maxX }, (_, i) => i).filter(i => i === 0 || (i + 1) % 5 === 0 || i === maxX - 1).map(i => (
-            <text key={i} x={xCoord(i)} y={H - PAD_B + 10} textAnchor="middle" fontSize="8" fill="var(--text-muted)">
+            <text key={i} x={xCoord(i)} y={H - PAD_B + 10} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">
               {i + 1}
             </text>
           ))}
-          <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="8" fill="var(--text-muted)">Game</text>
+          <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">Game</text>
           {/* Series lines */}
           {series.map(({ player, values }) => {
             if (values.length < 1) return null
@@ -965,10 +987,28 @@ function ChartsView({
 
   const hasData = pointsSeries.some(s => s.values.length > 0)
 
+  // Short insight summary: who's leading now vs one game ago
+  let insightLine: string | null = null
+  if (hasData) {
+    const withValues = pointsSeries.filter(s => s.values.length > 0)
+    const leader = withValues.reduce((best, s) => (s.values[s.values.length - 1] > (best?.values[best.values.length - 1] ?? -1) ? s : best), withValues[0])
+    const sortedByLatest = [...withValues].sort((a, b) => b.values[b.values.length - 1] - a.values[a.values.length - 1])
+    const runnerUp = sortedByLatest[1]
+    if (leader && runnerUp) {
+      const gap = leader.values[leader.values.length - 1] - runnerUp.values[runnerUp.values.length - 1]
+      insightLine = gap === 0
+        ? `${leader.player.name.split(' ')[0]} and ${runnerUp.player.name.split(' ')[0]} are tied at the top`
+        : `${leader.player.name.split(' ')[0]} leads by ${gap} pt${gap === 1 ? '' : 's'} over ${runnerUp.player.name.split(' ')[0]}`
+    }
+  }
+
   return (
     <div className="space-y-4">
       {hasData ? (
         <>
+          {insightLine && (
+            <p className="text-xs text-[var(--text-secondary)] px-1">💡 {insightLine}</p>
+          )}
           <LineChart
             title="Points Race"
             series={pointsSeries}
