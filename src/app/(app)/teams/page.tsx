@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { OwnerStack } from '@/components/ui/OwnerStack'
 import { FilterChip } from '@/components/ui/FilterChip'
 import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
 type SortMode = 'sweepstake' | 'last-season'
@@ -16,6 +16,7 @@ type SortMode = 'sweepstake' | 'last-season'
 export default function TeamsPage() {
   const [sortedCompetitions, setSortedCompetitions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [sortMode, setSortMode] = useState<SortMode>('sweepstake')
   const supabase = createClient()
 
@@ -23,8 +24,11 @@ export default function TeamsPage() {
 
   async function load() {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const [
       { data: teamCompData },
@@ -86,6 +90,10 @@ export default function TeamsPage() {
 
     setSortedCompetitions(comps)
     setLoading(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }
 
   function sortTeams(teams: any[], mode: SortMode) {
@@ -96,6 +104,8 @@ export default function TeamsPage() {
   }
 
   if (loading) return <AppShell title="Teams"><PageLoader /></AppShell>
+
+  if (error) return <AppShell title="Teams"><ErrorState onRetry={load} /></AppShell>
 
   const hasTeams = sortedCompetitions.some(c => c.teams.length > 0)
 

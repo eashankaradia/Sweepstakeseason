@@ -10,7 +10,7 @@ import { OwnerStack } from '@/components/ui/OwnerStack'
 import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
-import { EmptyState } from '@/components/ui/LoadingSpinner'
+import { EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
 
 export default function DashboardPage() {
@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const [bottomThreshold, setBottomThreshold] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
   const [pullDist, setPullDist] = useState(0)
   const touchStartY = useRef(0)
   const supabase = createClient()
@@ -36,9 +37,12 @@ export default function DashboardPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
+    setError(false)
 
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); setRefreshing(false); return }
+
+    try {
 
     const [{ data: lg }, { data: authData }] = await Promise.all([
       supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle(),
@@ -193,6 +197,11 @@ export default function DashboardPage() {
     setActivityFeed(((fullActivity ?? []) as any[]).slice(0, 8))
     setLoading(false)
     setRefreshing(false)
+    } catch {
+      setError(true)
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -217,6 +226,14 @@ export default function DashboardPage() {
   }
 
   if (loading) return <AppShell><DashboardSkeleton /></AppShell>
+
+  if (error) {
+    return (
+      <AppShell>
+        <ErrorState onRetry={() => load()} />
+      </AppShell>
+    )
+  }
 
   if (!league) {
     return (

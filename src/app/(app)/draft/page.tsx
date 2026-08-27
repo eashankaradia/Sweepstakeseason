@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import { formatDate } from '@/lib/utils'
 import { isAdminUser } from '@/lib/admin'
 import type { League, Player, Team, Competition, DraftRun } from '@/lib/supabase/types'
@@ -54,6 +54,7 @@ export default function DraftPage() {
   const [teamSearch, setTeamSearch] = useState('')
   const [ownersPerTeam, setOwnersPerTeam] = useState(3)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [locking, setLocking] = useState(false)
@@ -116,8 +117,11 @@ export default function DraftPage() {
 
   async function loadData() {
     setLoading(true)
+    setLoadError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
@@ -191,6 +195,10 @@ export default function DraftPage() {
       initialized.current = true
     }
     setLoading(false)
+    } catch {
+      setLoadError(true)
+      setLoading(false)
+    }
   }
 
   function getCompSelectionState(compId: string): 'all' | 'some' | 'none' {
@@ -356,6 +364,7 @@ export default function DraftPage() {
   const validation = allocations.length > 0 ? validateDraft(allocations, currentTpp, ownersPerTeam) : null
 
   if (loading) return <AppShell title="Draft Room"><PageLoader /></AppShell>
+  if (loadError) return <AppShell title="Draft Room"><ErrorState onRetry={loadData} /></AppShell>
   if (!league) return <AppShell title="Draft Room"><EmptyState icon="🎯" title="No league set up" description="Create a league first in Settings." /></AppShell>
 
   const hasDraft = currentAssignments.length > 0

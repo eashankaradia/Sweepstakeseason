@@ -6,7 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
-import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
+import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import { formatDateTime } from '@/lib/utils'
 
 type Player = { id: string; name: string; color: string }
@@ -33,12 +33,16 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const supabase = createClient()
 
   const loadFixture = useCallback(async () => {
     setLoading(true)
+    setError(false)
     const leagueId = getLeagueIdCookie()
     if (!leagueId) { setLoading(false); return }
+
+    try {
 
     const { data: fix } = await supabase
       .from('fixtures')
@@ -111,6 +115,10 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
     } else {
       fetchMatchup(fix.home_team_id, fix.away_team_id)
     }
+    } catch {
+      setError(true)
+      setLoading(false)
+    }
   }, [id])
 
   const fetchEvents = async (fixtureId: string) => {
@@ -136,6 +144,7 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   useEffect(() => { loadFixture() }, [loadFixture])
 
   if (loading) return <AppShell title="Match" backHref="/fixtures"><PageLoader /></AppShell>
+  if (error) return <AppShell title="Match" backHref="/fixtures"><ErrorState onRetry={loadFixture} /></AppShell>
   if (!fixture) return <AppShell title="Match" backHref="/fixtures"><EmptyState icon="⚽" title="Match not found" /></AppShell>
 
   const isLive = fixture.status === 'live'

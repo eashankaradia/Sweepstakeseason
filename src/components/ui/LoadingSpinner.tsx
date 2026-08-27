@@ -42,3 +42,29 @@ export function EmptyState({
     </div>
   )
 }
+
+export function ErrorState({
+  title = "Couldn't load this",
+  description = 'Something went wrong reaching the server. Check your connection and try again.',
+  onRetry,
+}: {
+  title?: string
+  description?: string
+  onRetry?: () => void
+}) {
+  return (
+    <div role="alert" className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="text-4xl mb-3">⚠️</div>
+      <h3 className="font-semibold text-[var(--text-primary)] mb-1">{title}</h3>
+      <p className="text-sm text-[var(--text-secondary)] max-w-xs">{description}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="mt-4 min-h-11 px-4 rounded-lg bg-[var(--accent)] text-white text-sm font-medium pressable"
+        >
+          Try again
+        </button>
+      )}
+    </div>
+  )
+}
