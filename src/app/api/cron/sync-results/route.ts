@@ -126,6 +126,21 @@ export async function GET(request: Request) {
         warnings.push(`SportsDB ${sdbId} eventsnextleague fetch error: ${e?.message}`)
       }
 
+      for (const round of [1, 2]) {
+        try {
+          const r = await fetch(`${SPORTSDB_BASE}/eventsround.php?id=${sdbId}&r=${round}&s=${currentSeason()}`)
+          if (r.ok) {
+            const d = await r.json()
+            for (const ev of d.events ?? []) eventsById.set(ev.idEvent, ev)
+            warnings.push(`SportsDB ${sdbId} eventsround r=${round} returned ${(d.events ?? []).length} events`)
+          } else {
+            warnings.push(`SportsDB ${sdbId} eventsround r=${round} HTTP ${r.status}`)
+          }
+        } catch (e: any) {
+          warnings.push(`SportsDB ${sdbId} eventsround r=${round} fetch error: ${e?.message}`)
+        }
+      }
+
       const sdbEvents = [...eventsById.values()]
       warnings.push(`SportsDB ${sdbId} merged total ${sdbEvents.length} unique events`)
       for (const ev of sdbEvents) {
