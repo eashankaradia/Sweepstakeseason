@@ -113,10 +113,23 @@ export async function GET(request: Request) {
         warnings.push(`SportsDB ${sdbId} eventspastleague fetch error: ${e?.message}`)
       }
 
+      try {
+        const r = await fetch(`${SPORTSDB_BASE}/eventsnextleague.php?id=${sdbId}`)
+        if (r.ok) {
+          const d = await r.json()
+          for (const ev of d.events ?? []) eventsById.set(ev.idEvent, ev)
+          warnings.push(`SportsDB ${sdbId} eventsnextleague returned ${(d.events ?? []).length} events`)
+        } else {
+          warnings.push(`SportsDB ${sdbId} eventsnextleague HTTP ${r.status}`)
+        }
+      } catch (e: any) {
+        warnings.push(`SportsDB ${sdbId} eventsnextleague fetch error: ${e?.message}`)
+      }
+
       const sdbEvents = [...eventsById.values()]
       warnings.push(`SportsDB ${sdbId} merged total ${sdbEvents.length} unique events`)
       for (const ev of sdbEvents) {
-        warnings.push(`  ${ev.dateEvent} ${ev.strHomeTeam} vs ${ev.strAwayTeam} [${ev.strStatus}]`)
+        warnings.push(`  ${ev.dateEvent} ${ev.strHomeTeam} vs ${ev.strAwayTeam} [${ev.strStatus}] score=${ev.intHomeScore}-${ev.intAwayScore}`)
       }
 
       const FINISHED_STATUSES = new Set(['Match Finished', 'FT', 'AET', 'Penalties', 'FT_PEN'])
