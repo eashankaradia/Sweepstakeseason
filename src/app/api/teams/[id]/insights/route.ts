@@ -15,7 +15,8 @@ function currentSeason(): string {
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const bbsToken = process.env.BIGBALLS_API_KEY
   if (!bbsToken) {
     return NextResponse.json({ error: 'BIGBALLS_API_KEY not set' }, { status: 500 })
@@ -24,13 +25,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-    const { data: team } = await supabase.from('teams').select('id, name').eq('id', params.id).maybeSingle()
+    const { data: team } = await supabase.from('teams').select('id, name').eq('id', id).maybeSingle()
     if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 })
 
     const { data: tcRows } = await supabase
       .from('team_competitions')
       .select('competitions(espn_slug, competition_type)')
-      .eq('team_id', params.id)
+      .eq('team_id', id)
 
     const domesticSlug = (tcRows ?? [])
       .map((r: any) => r.competitions)
