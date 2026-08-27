@@ -352,7 +352,7 @@ function MineView({
   const totalGA = teams.reduce((s: number, t: any) => s + (t.score?.goals_against ?? 0), 0)
   const totalGD = totalGF - totalGA
 
-  const [statsExpanded, setStatsExpanded] = useState(true)
+  const [statsExpanded, setStatsExpanded] = useState(false)
 
   const now = new Date()
   const availableMonths = Array.from({ length: 4 }, (_, i) => {
@@ -454,6 +454,7 @@ function MineView({
           const isOpen = donTeamId === team.id
 
           const monthFixtures = isOpen && donMonth ? getTeamFixturesInMonth(team.id, donMonth) : []
+          const teamNextFixture = upcomingFixtures.find(f => f.home_team_id === team.id || f.away_team_id === team.id)
 
           return (
             <TeamCard
@@ -480,6 +481,7 @@ function MineView({
               onCancel={onCancel}
               openDon={openDon}
               closeDon={() => setDonTeamId(null)}
+              nextFixture={teamNextFixture}
             />
           )
         })}
@@ -593,8 +595,10 @@ function TeamCard({
   team, score, gf, ga, gd, hasStats, allComps, pendingForTeam,
   alreadyUsed, canActivate, isOpen, donMonth, setDonMonth, monthFixtures,
   availableMonths, usedMonths, activating, onActivate, onCancel, openDon, closeDon,
+  nextFixture,
 }: any) {
-  const [statsOpen, setStatsOpen] = useState(true)
+  const [statsOpen, setStatsOpen] = useState(false)
+  const donActiveForFixture = nextFixture && pendingForTeam.some((p: any) => p.fixture_id === nextFixture.id)
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
@@ -625,7 +629,9 @@ function TeamCard({
           {hasStats && (
             <button
               onClick={() => setStatsOpen(v => !v)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--bg)] transition-colors"
+              aria-label={statsOpen ? 'Hide season stats' : 'Show season stats'}
+              title={statsOpen ? 'Hide season stats' : 'Show season stats'}
+              className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg hover:bg-[var(--bg)] transition-colors"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                 className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-200 ${statsOpen ? '' : '-rotate-90'}`}
@@ -636,6 +642,27 @@ function TeamCard({
           )}
         </div>
       </div>
+
+      {/* Next fixture — the match consequence for this club, shown before season stats */}
+      {nextFixture && (() => {
+        const isHome = nextFixture.home_team_id === team.id
+        const opp = isHome ? nextFixture.away_team : nextFixture.home_team
+        const winPts = donActiveForFixture ? 6 : 3
+        return (
+          <Link href={`/fixtures/${nextFixture.id}`} className="block border-t border-[var(--border)] px-3 py-2.5 hover:bg-[var(--bg-card-hover)] transition-colors">
+            <div className="flex items-center gap-2">
+              <TeamCrest team={opp} size="xs" />
+              <span className="text-xs text-[var(--text-primary)] flex-1 truncate">
+                {isHome ? 'vs' : '@'} {opp?.short_name || opp?.name}
+                <span className="text-[var(--text-muted)]"> · {formatCountdown(nextFixture.kickoff_time)}</span>
+              </span>
+              <span className={`text-[10px] font-bold shrink-0 ${donActiveForFixture ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
+                {donActiveForFixture && '⚡ '}Win: +{winPts}
+              </span>
+            </div>
+          </Link>
+        )
+      })()}
 
       {hasStats && statsOpen && (
         <div className="grid grid-cols-5 gap-1 px-3 pb-2.5 text-center">
@@ -1118,7 +1145,7 @@ function MyTeamsCalendarView({
     <div>
       {/* Month header + D-o-N status */}
       <div className="flex items-center justify-between mb-2">
-        <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Previous month">‹</button>
+        <button onClick={prevMonth} title="Previous month" className="w-11 h-11 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Previous month">‹</button>
         <div className="flex flex-col items-center gap-1">
           <span className="text-sm font-semibold text-[var(--text-primary)]">{monthLabel}</span>
           {isDonActive ? (
@@ -1129,7 +1156,7 @@ function MyTeamsCalendarView({
             <span className="text-[9px] font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">⚡ D-o-N available</span>
           )}
         </div>
-        <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Next month">›</button>
+        <button onClick={nextMonth} title="Next month" className="w-11 h-11 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors" aria-label="Next month">›</button>
       </div>
 
       {/* Day-of-week headers */}
