@@ -6,25 +6,23 @@ import { AppShell } from '@/components/layout/AppShell'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
-import { FilterChip } from '@/components/ui/FilterChip'
 import { OwnerStack } from '@/components/ui/OwnerStack'
-import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
+import { FilterChip } from '@/components/ui/FilterChip'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
-import type { Competition, Team, Fixture } from '@/lib/supabase/types'
+import type { Team, Fixture } from '@/lib/supabase/types'
+import { computeStandingsAsOf, giantKillerEligibility, type TeamRank } from '@/lib/giantKiller'
 import Link from 'next/link'
 
 type Player = { id: string; name: string; color: string }
-type FixtureRow = Fixture & { competition: Competition; home_team: Team; away_team: Team }
+type FixtureRow = Fixture & { home_team: Team; away_team: Team }
 
 export default function FixturesPage() {
-  const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fixtures, setFixtures] = useState<FixtureRow[]>([])
   const [ownerMap, setOwnerMap] = useState<Map<string, Player[]>>(new Map())
   const [myTeamIds, setMyTeamIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'results' | 'calendar'>('upcoming')
-  const [activeComp, setActiveComp] = useState('all')
   const [myTeamsOnly, setMyTeamsOnly] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
 
@@ -43,10 +41,9 @@ export default function FixturesPage() {
     const { data: authData } = await supabase.auth.getUser()
     const uid = authData?.user?.id
 
-    const [{ data: comps }, { data: fix }, { data: assignments }, { data: lastSync }, { data: players }] = await Promise.all([
-      supabase.from('competitions').select('*').eq('league_id', leagueId).eq('enabled', true).order('display_order'),
+    const [{ data: fix }, { data: assignments }, { data: lastSync }, { data: players }] = await Promise.all([
       supabase.from('fixtures')
-        .select(`*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
+        .select(`*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
         .eq('league_id', leagueId)
         .order('kickoff_time', { ascending: true }),
       supabase.from('player_team_assignments').select('team_id, players(id, name, color)').eq('league_id', leagueId),
@@ -62,7 +59,6 @@ export default function FixturesPage() {
         : Promise.resolve({ data: null }),
     ])
 
-    setCompetitions((comps ?? []).filter((c: any) => c.competition_type !== 'domestic_cup'))
     setFixtures((fix ?? []) as any[])
     setLastSyncedAt((lastSync as any)?.created_at ?? null)
 
@@ -98,13 +94,23 @@ export default function FixturesPage() {
     const statusOk = activeTab === 'upcoming'
       ? f.status === 'scheduled' || f.status === 'live' || (f.status as any) === 'postponed'
       : f.status === 'completed'
-    const notCup = (f.competition as any)?.competition_type !== 'domestic_cup'
-    const compOk = activeComp === 'all' || f.competition_id === activeComp
     const myTeamOk = !myTeamsOnly || myTeamIds.has(f.home_team_id) || myTeamIds.has(f.away_team_id)
-    return statusOk && notCup && compOk && myTeamOk
+    return statusOk && myTeamOk
   })
 
   const groups = groupByDate(filtered, activeTab === 'results')
+
+  // Giant Killer eligibility: computed once from every fixture we have, so it
+  // stays correct regardless of which tab/filter is active.
+  const allTeamIds = [...new Set(fixtures.flatMap(f => [f.home_team_id, f.away_team_id]))]
+  const gkRanksByKickoff = new Map<string, Map<string, TeamRank> | null>()
+  function ranksBefore(kickoff: string | null): Map<string, TeamRank> | null {
+    if (!kickoff) return null
+    if (!gkRanksByKickoff.has(kickoff)) {
+      gkRanksByKickoff.set(kickoff, computeStandingsAsOf(allTeamIds, fixtures, kickoff))
+    }
+    return gkRanksByKickoff.get(kickoff) ?? null
+  }
 
   if (loading) return <AppShell title="Fixtures"><PageLoader /></AppShell>
 
@@ -135,21 +141,18 @@ export default function FixturesPage() {
       />
 
       {activeTab === 'calendar' ? (
-        <CalendarView fixtures={fixtures} ownerMap={ownerMap} myTeamIds={myTeamIds} />
+        <CalendarView
+          fixtures={fixtures}
+          ownerMap={ownerMap}
+          myTeamIds={myTeamIds}
+          giantKillerFor={(f) => f.status !== 'completed' ? giantKillerEligibility(f.home_team_id, f.away_team_id, ranksBefore(f.kickoff_time)) : { eligible: false }}
+        />
       ) : (
         <>
-          {/* Filter chips row */}
-          {(competitions.length > 0 || myTeamIds.size > 0) && (
-            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4 scrollbar-none">
-              <FilterChip active={activeComp === 'all'} onClick={() => setActiveComp('all')}>All</FilterChip>
-              {competitions.map(c => (
-                <FilterChip key={c.id} active={activeComp === c.id} onClick={() => setActiveComp(c.id)}>
-                  {(c as any).short_name || c.name}
-                </FilterChip>
-              ))}
-              {myTeamIds.size > 0 && (
-                <FilterChip active={myTeamsOnly} onClick={() => setMyTeamsOnly(v => !v)}>My Teams</FilterChip>
-              )}
+          {/* My Teams filter */}
+          {myTeamIds.size > 0 && (
+            <div className="flex gap-1.5 mb-3">
+              <FilterChip active={myTeamsOnly} onClick={() => setMyTeamsOnly(v => !v)}>My Teams</FilterChip>
             </div>
           )}
 
@@ -186,6 +189,7 @@ export default function FixturesPage() {
                         ownerMap={ownerMap}
                         myTeamIds={myTeamIds}
                         divider={i < groupFixtures.length - 1}
+                        giantKiller={f.status !== 'completed' ? giantKillerEligibility(f.home_team_id, f.away_team_id, ranksBefore(f.kickoff_time)) : { eligible: false }}
                       />
                     ))}
                   </div>
@@ -204,11 +208,13 @@ function FixtureRow({
   ownerMap,
   myTeamIds,
   divider,
+  giantKiller,
 }: {
   fixture: FixtureRow
   ownerMap: Map<string, Player[]>
   myTeamIds: Set<string>
   divider: boolean
+  giantKiller: { eligible: boolean; bottomTeamId?: string; topTeamId?: string }
 }) {
   const isCompleted = fixture.status === 'completed'
   const isLive = fixture.status === 'live'
@@ -216,43 +222,41 @@ function FixtureRow({
   const homeOwners: Player[] = ownerMap.get(fixture.home_team_id) ?? []
   const awayOwners: Player[] = ownerMap.get(fixture.away_team_id) ?? []
   const isMine = myTeamIds.has(fixture.home_team_id) || myTeamIds.has(fixture.away_team_id)
-  const comp = fixture.competition as any
+
+  const winnerOwners = isCompleted
+    ? fixture.home_score! > fixture.away_score! ? homeOwners
+      : fixture.away_score! > fixture.home_score! ? awayOwners
+      : []
+    : []
+  const winnerColor = winnerOwners[0]?.color
 
   return (
     <Link href={`/fixtures/${fixture.id}`} className="block pressable">
       <div
         className={[
-          'relative flex items-center gap-1.5 px-3 py-2.5 hover:bg-[var(--accent)]/5 transition-colors',
+          'relative flex items-center gap-1 px-2.5 py-1.5 hover:bg-[var(--accent)]/5 transition-colors',
           divider ? 'border-b border-[var(--border)]' : '',
-          isMine ? 'bg-[var(--accent)]/[0.04]' : '',
         ].join(' ')}
+        style={winnerColor ? { backgroundColor: winnerColor + '10' } : undefined}
       >
         {/* My team accent bar */}
         {isMine && (
           <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--accent)] rounded-r" />
         )}
 
-        {/* Competition badge — slim column */}
-        <CompetitionBadge
-          shortName={comp?.short_name}
-          name={comp?.name}
-          type={comp?.competition_type}
-          className="shrink-0 w-[30px] text-center"
-        />
-
         {/* Home side */}
         <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
           <OwnerStack owners={homeOwners} size="xs" max={2} />
-          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">
+          <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">
             {fixture.home_team?.short_name || fixture.home_team?.name}
           </span>
           <TeamCrest team={fixture.home_team} size="xs" />
         </div>
 
         {/* Score / time column */}
-        <div className="shrink-0 w-[52px] text-center">
+        <div className="shrink-0 w-[46px] text-center">
           {isCompleted ? (
-            <span className="font-bold text-[13px] text-[var(--text-primary)] tabular-nums">
+            <span className="font-bold text-[12px] text-[var(--text-primary)] tabular-nums">
               {fixture.home_score}–{fixture.away_score}
             </span>
           ) : isLive ? (
@@ -260,21 +264,26 @@ function FixtureRow({
           ) : isPostponed ? (
             <span className="text-[10px] text-[var(--amber)] font-semibold">PPD</span>
           ) : (
-            <span className="text-[11px] text-[var(--text-muted)] font-medium tabular-nums">
+            <span className="text-[10px] text-[var(--text-muted)] font-medium tabular-nums">
               {fixture.kickoff_time
                 ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
                 : 'vs'}
             </span>
           )}
-          {isMine && !isCompleted && (
-            <div className="text-[8px] font-bold text-[var(--accent)] mt-0.5">Win: +3</div>
+          {giantKiller.eligible && (
+            <div
+              className="text-[8px] font-bold text-amber-500 mt-0.5"
+              title="Giant Killer chance: a bottom-6 side facing a top-6 side"
+            >
+              ⚔ GK
+            </div>
           )}
         </div>
 
         {/* Away side */}
         <div className="flex items-center gap-1 flex-1 min-w-0">
           <TeamCrest team={fixture.away_team} size="xs" />
-          <span className="text-[12px] font-medium text-[var(--text-primary)] truncate">
+          <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">
             {fixture.away_team?.short_name || fixture.away_team?.name}
           </span>
           <OwnerStack owners={awayOwners} size="xs" max={2} />
@@ -332,10 +341,12 @@ function CalendarView({
   fixtures,
   ownerMap,
   myTeamIds,
+  giantKillerFor,
 }: {
   fixtures: FixtureRow[]
   ownerMap: Map<string, Player[]>
   myTeamIds: Set<string>
+  giantKillerFor: (f: FixtureRow) => { eligible: boolean; bottomTeamId?: string; topTeamId?: string }
 }) {
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date()
@@ -488,6 +499,7 @@ function CalendarView({
                 ownerMap={ownerMap}
                 myTeamIds={myTeamIds}
                 divider={i < displayFixtures.length - 1}
+                giantKiller={giantKillerFor(f)}
               />
             ))}
           </div>
