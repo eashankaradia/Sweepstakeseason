@@ -21,6 +21,7 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
   const [competitions, setCompetitions] = useState<any[]>([])
   const [espnTeam, setEspnTeam] = useState<any>(null)
   const [espnNews, setEspnNews] = useState<any[]>([])
+  const [insights, setInsights] = useState<{ standing: any; elo: any } | null>(null)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -72,7 +73,16 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
       }
     }
 
+    fetchInsights(params.id)
+
     setLoading(false)
+  }
+
+  async function fetchInsights(teamId: string) {
+    try {
+      const res = await fetch(`/api/teams/${teamId}/insights`)
+      if (res.ok) setInsights(await res.json())
+    } catch { /* ignore */ }
   }
 
   async function fetchESPN(slug: string, espnTeamId: string) {
@@ -224,6 +234,37 @@ export default function TeamDetailPage({ params }: { params: { id: string } }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Live league standing + form strength (BigBallsData) */}
+      {(insights?.standing || insights?.elo) && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 mb-3">
+          <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-2">League form</p>
+          <div className="grid grid-cols-3 gap-2">
+            {insights.standing && (
+              <>
+                <div className="text-center">
+                  <p className="text-lg font-black text-[var(--text-primary)]">
+                    {insights.standing.rank}<span className="text-[10px] text-[var(--text-muted)]">/{insights.standing.total_teams}</span>
+                  </p>
+                  <p className="text-[9px] text-[var(--text-muted)] mt-0.5">League rank</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-black text-[var(--text-primary)]">
+                    {insights.standing.points_for ?? 0}<span className="text-xs text-[var(--text-muted)]">–</span>{insights.standing.points_against ?? 0}
+                  </p>
+                  <p className="text-[9px] text-[var(--text-muted)] mt-0.5">GF–GA</p>
+                </div>
+              </>
+            )}
+            {insights.elo && (
+              <div className="text-center">
+                <p className="text-lg font-black text-[var(--accent)]">{Math.round(insights.elo.rating)}</p>
+                <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Elo rating</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
