@@ -101,54 +101,12 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'overall' | 'monthly' | 'tables' | 'charts' | 'heatmap'>('overall')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [espnStandings, setEspnStandings] = useState<Map<string, any[]>>(new Map())
-  const [espnLoading, setEspnLoading] = useState(false)
   const [activityFeed, setActivityFeed] = useState<any[]>([])
   const [recentMatches, setRecentMatches] = useState<any[]>([])
 
   const supabase = createClient()
 
   useEffect(() => { load() }, [])
-
-  useEffect(() => {
-    if (tab !== 'tables' || competitions.length === 0 || espnStandings.size > 0) return
-    const domestic = competitions.filter((c: any) => c.competition_type === 'domestic_league' && c.espn_slug)
-    if (domestic.length === 0) return
-    setEspnLoading(true)
-    const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
-    Promise.all(domestic.map(async (comp: any) => {
-      try {
-        const res = await fetch(`${ESPN_BASE}/${comp.espn_slug}/standings`)
-        if (!res.ok) return null
-        const data = await res.json()
-        const entries = data?.standings?.entries ?? data?.children?.[0]?.standings?.entries ?? []
-        const rows = entries.map((entry: any, i: number) => {
-          const stats: Record<string, number> = {}
-          for (const s of (entry.stats ?? [])) stats[s.name] = Number(s.value ?? 0)
-          return {
-            espnTeamId: String(entry.team?.id ?? ''),
-            teamName: entry.team?.displayName ?? '',
-            abbr: entry.team?.abbreviation ?? '',
-            position: stats.rank ?? stats.position ?? i + 1,
-            played: stats.gamesPlayed ?? 0,
-            wins: stats.wins ?? 0,
-            draws: stats.ties ?? stats.draws ?? 0,
-            losses: stats.losses ?? 0,
-            gf: stats.pointsFor ?? stats.goalsFor ?? 0,
-            ga: stats.pointsAgainst ?? stats.goalsAgainst ?? 0,
-            gd: stats.pointDifferential ?? 0,
-            points: stats.points ?? 0,
-          }
-        }).sort((a: any, b: any) => a.position - b.position)
-        return { compId: comp.id, rows }
-      } catch { return null }
-    })).then(results => {
-      const map = new Map<string, any[]>()
-      for (const r of results) { if (r) map.set(r.compId, r.rows) }
-      setEspnStandings(map)
-      setEspnLoading(false)
-    })
-  }, [tab, competitions])
 
   async function load() {
     setLoading(true)
@@ -495,8 +453,6 @@ export default function StandingsPage() {
           teamScores={teamScores}
           teamCompetitions={teamCompetitions}
           ownerMap={ownerMap}
-          espnStandings={espnStandings}
-          espnLoading={espnLoading}
         />
       )}
 
@@ -589,25 +545,14 @@ function TablesView({
   teamScores,
   teamCompetitions,
   ownerMap,
-  espnStandings,
-  espnLoading,
 }: {
   competitions: any[]
   teamScores: any[]
   teamCompetitions: any[]
   ownerMap: Map<string, any[]>
-  espnStandings: Map<string, any[]>
-  espnLoading: boolean
 }) {
   if (competitions.length === 0) {
     return <EmptyState icon="📊" title="No competitions" description="Enable competitions in Settings." />
-  }
-
-  const espnTeamLookup = new Map<string, { team: any; owners: any[] }>()
-  for (const tc of teamCompetitions) {
-    if (!tc.teams?.espn_team_id) continue
-    const owners = ownerMap.get(tc.teams.id) ?? []
-    espnTeamLookup.set(String(tc.teams.espn_team_id), { team: tc.teams, owners })
   }
 
   const compTeamMap = new Map<string, any[]>()
@@ -652,15 +597,9 @@ function TablesView({
 
   return (
     <div className="space-y-5">
-      {espnLoading && (
-        <div className="text-center py-2 text-[10px] text-[var(--text-muted)]">Loading live tables…</div>
-      )}
       {sortedComps.map(comp => {
         const isEu = comp.competition_type === 'european'
         const isCup = comp.competition_type === 'domestic_cup'
-        const isDomestic = comp.competition_type === 'domestic_league'
-        const espnRows = espnStandings.get(comp.id)
-        const totalTeams = espnRows?.length ?? 0
 
         const compHeader = (
           <div className={`px-3 py-2 flex items-center gap-2 ${isEu ? 'bg-purple-500/10' : isCup ? 'bg-amber-500/10' : 'bg-[var(--bg-card)]'}`}>
@@ -668,83 +607,8 @@ function TablesView({
               {comp.short_name}
             </div>
             <span className="font-semibold text-sm text-[var(--text-primary)] flex-1">{comp.name}</span>
-            {espnRows && <span className="text-[9px] text-emerald-400 font-semibold">● Live</span>}
           </div>
         )
-
-        if (isDomestic && espnRows && espnRows.length > 0) {
-          return (
-            <div key={comp.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
-              {compHeader}
-              {SCROLL_HINT}
-              <div className="overflow-x-auto">
-                <div style={{ minWidth: 500 }}>
-                  {/* Header */}
-                  <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
-                    <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
-                    <span className="w-6 shrink-0" />
-                    <span className="w-[110px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
-                    <span className="flex-1 text-[9px] text-[var(--text-muted)]">Owners</span>
-                    <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
-                    <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
-                    <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
-                    <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
-                    <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
-                    <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
-                  </div>
-                  {espnRows.map((row: any, idx: number) => {
-                    const lookup = espnTeamLookup.get(row.espnTeamId)
-                    const team = lookup?.team
-                    const owners = lookup?.owners ?? []
-                    const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
-                    const pos = idx + 1
-                    const zoneColor =
-                      pos <= 4 ? '#22c55e' :
-                      pos === 5 ? '#f97316' :
-                      pos === 6 ? '#eab308' :
-                      pos > totalTeams - 3 ? '#ef4444' :
-                      'transparent'
-                    const primaryOwner = owners[0]
-                    return (
-                      <div
-                        key={row.espnTeamId}
-                        className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 min-h-[46px] bg-[var(--bg-card)]"
-                        style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : `3px solid ${zoneColor}40` }}
-                      >
-                        <span className="w-6 text-[10px] text-[var(--text-muted)] text-center font-medium shrink-0">{pos}</span>
-                        <div className="w-6 shrink-0">
-                          {team ? <TeamCrest team={team} size="xs" /> : <span className="w-4 h-4 rounded-full bg-[var(--border)] block" />}
-                        </div>
-                        <div className="w-[110px] shrink-0 min-w-0 pr-1">
-                          <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight font-medium">
-                            {team?.short_name || row.teamName}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0 pr-2">
-                          <OwnerPills owners={owners} />
-                        </div>
-                        <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.points}</span>
-                        <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.played}</span>
-                        <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.wins}</span>
-                        <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.draws}</span>
-                        <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.losses}</span>
-                        <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              {totalTeams > 0 && (
-                <div className="px-3 py-1.5 border-t border-[var(--border)]/50 bg-[var(--bg-card)] flex items-center gap-3 flex-wrap">
-                  <LegendDot color="#22c55e" label="Champions League" />
-                  <LegendDot color="#f97316" label="Europa League" />
-                  <LegendDot color="#eab308" label="Conference League" />
-                  <LegendDot color="#ef4444" label="Relegation" />
-                </div>
-              )}
-            </div>
-          )
-        }
 
         const teams = compTeamMap.get(comp.id) ?? []
         if (teams.length === 0) return null

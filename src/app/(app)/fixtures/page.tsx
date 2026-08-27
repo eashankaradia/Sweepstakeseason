@@ -138,7 +138,7 @@ export default function FixturesPage() {
               icon={activeTab === 'upcoming' ? '📅' : '📊'}
               title={activeTab === 'upcoming' ? 'No upcoming fixtures' : 'No results yet'}
               description={activeTab === 'upcoming'
-                ? 'Fixtures import automatically from ESPN.'
+                ? 'Fixtures import automatically.'
                 : 'Results appear once matches are completed.'}
             />
           ) : (
