@@ -79,6 +79,8 @@ export default function FixturesPage() {
         if (a.players && a.players.id === myPlayerId) myTeams.add(a.team_id)
       }
       setMyTeamIds(myTeams)
+      // Prioritise "my teams" by default when the user actually has teams to follow.
+      if (myTeams.size > 0) setMyTeamsOnly(true)
     }
 
     setLoading(false)
@@ -239,6 +241,9 @@ function FixtureRow({
                 : 'vs'}
             </span>
           )}
+          {isMine && !isCompleted && (
+            <div className="text-[8px] font-bold text-[var(--accent)] mt-0.5">Win: +3</div>
+          )}
         </div>
 
         {/* Away side */}
@@ -365,16 +370,18 @@ function CalendarView({
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={prevMonth}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          className="w-11 h-11 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
           aria-label="Previous month"
+          title="Previous month"
         >
           ‹
         </button>
         <span className="text-sm font-semibold text-[var(--text-primary)]">{monthLabel}</span>
         <button
           onClick={nextMonth}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          className="w-11 h-11 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg transition-colors"
           aria-label="Next month"
+          title="Next month"
         >
           ›
         </button>
