@@ -5,6 +5,7 @@ import { getLeagueIdCookie } from '@/lib/cookie'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Toggle } from '@/components/ui/Toggle'
 import { PageLoader, EmptyState } from '@/components/ui/LoadingSpinner'
 import type { League, Competition } from '@/lib/supabase/types'
 
@@ -13,6 +14,7 @@ export default function CompetitionsSettingsPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState<string | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -32,9 +34,15 @@ export default function CompetitionsSettingsPage() {
   }
 
   async function toggleCompetition(comp: Competition) {
+    const disabling = comp.enabled
+    if (disabling && league?.status === 'active' && !confirm(
+      `Disable ${comp.name}?\n\nThis stops new results for this competition being synced from now on. Results and points already recorded won't be removed.`
+    )) return
     setToggling(comp.id)
     await supabase.from('competitions').update({ enabled: !comp.enabled }).eq('id', comp.id)
     setToggling(null)
+    setSavedId(comp.id)
+    setTimeout(() => setSavedId(null), 2000)
     loadData()
   }
 
@@ -58,7 +66,7 @@ export default function CompetitionsSettingsPage() {
               <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Domestic leagues</p>
               <div className="space-y-2">
                 {domestic.map(comp => (
-                  <CompetitionRow key={comp.id} comp={comp} toggling={toggling === comp.id} onToggle={() => toggleCompetition(comp)} />
+                  <CompetitionRow key={comp.id} comp={comp} toggling={toggling === comp.id} saved={savedId === comp.id} onToggle={() => toggleCompetition(comp)} />
                 ))}
               </div>
             </div>
@@ -69,7 +77,7 @@ export default function CompetitionsSettingsPage() {
               <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">European competitions</p>
               <div className="space-y-2">
                 {european.map(comp => (
-                  <CompetitionRow key={comp.id} comp={comp} toggling={toggling === comp.id} onToggle={() => toggleCompetition(comp)} />
+                  <CompetitionRow key={comp.id} comp={comp} toggling={toggling === comp.id} saved={savedId === comp.id} onToggle={() => toggleCompetition(comp)} />
                 ))}
               </div>
             </div>
@@ -91,7 +99,7 @@ export default function CompetitionsSettingsPage() {
   )
 }
 
-function CompetitionRow({ comp, toggling, onToggle }: { comp: Competition; toggling: boolean; onToggle: () => void }) {
+function CompetitionRow({ comp, toggling, saved, onToggle }: { comp: Competition; toggling: boolean; saved: boolean; onToggle: () => void }) {
   return (
     <Card className="!p-3">
       <div className="flex items-center gap-3">
@@ -103,17 +111,12 @@ function CompetitionRow({ comp, toggling, onToggle }: { comp: Competition; toggl
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm text-[var(--text-primary)]">{comp.name}</p>
           {comp.country && <p className="text-xs text-[var(--text-secondary)]">{comp.country}</p>}
+          {saved && <p className="text-[9px] text-emerald-400 font-medium mt-0.5">✓ Saved</p>}
         </div>
         <Badge variant={comp.competition_type === 'european' ? 'purple' : 'muted'} className="shrink-0">
           {comp.competition_type === 'european' ? 'EU' : 'Dom'}
         </Badge>
-        <button
-          onClick={onToggle}
-          disabled={toggling}
-          className={`w-11 h-6 rounded-full transition-colors shrink-0 ${comp.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}
-        >
-          <div className={`w-4 h-4 bg-white rounded-full mx-1 transition-transform ${comp.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-        </button>
+        <Toggle checked={comp.enabled ?? false} onChange={onToggle} disabled={toggling} label={`${comp.name} ${comp.enabled ? 'enabled' : 'disabled'}`} />
       </div>
     </Card>
   )
