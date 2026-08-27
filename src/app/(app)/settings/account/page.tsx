@@ -69,60 +69,76 @@ export default function AccountPage() {
           </p>
 
           {success && (
-            <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm px-3 py-2.5 rounded-xl">
+            <div role="status" className="mb-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm px-3 py-2.5 rounded-xl">
               ✓ Password updated successfully!
             </div>
           )}
           {error && (
-            <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-3 py-2.5 rounded-xl">
+            <div id="account-form-error" role="alert" className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-3 py-2.5 rounded-xl">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleChangePassword} className="space-y-3">
+          <form onSubmit={handleChangePassword} className="space-y-3" noValidate>
             <div>
-              <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              <label htmlFor="current-password" className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                 Current password
               </label>
               <input
+                id="current-password"
+                name="current-password"
                 type="password"
                 value={currentPw}
                 onChange={e => setCurrentPw(e.target.value)}
                 required
+                autoComplete="current-password"
                 placeholder="Your current password"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'account-form-error' : undefined}
                 className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              <label htmlFor="new-password" className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                 New password
               </label>
               <input
+                id="new-password"
+                name="new-password"
                 type="password"
                 value={newPw}
                 onChange={e => setNewPw(e.target.value)}
                 required
+                minLength={8}
+                autoComplete="new-password"
                 placeholder="At least 8 characters"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'account-form-error' : undefined}
                 className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              <label htmlFor="confirm-password" className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                 Confirm new password
               </label>
               <input
+                id="confirm-password"
+                name="confirm-password"
                 type="password"
                 value={confirmPw}
                 onChange={e => setConfirmPw(e.target.value)}
                 required
+                autoComplete="new-password"
                 placeholder="Repeat new password"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'account-form-error' : undefined}
                 className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[var(--accent)] text-white font-semibold py-2.5 rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-1"
+              className="w-full bg-[var(--accent)] text-white font-semibold py-2.5 rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-1 min-h-11"
             >
               {loading ? 'Updating…' : 'Update Password'}
             </button>

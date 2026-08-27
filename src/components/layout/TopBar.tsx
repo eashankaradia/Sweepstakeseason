@@ -18,8 +18,10 @@ export function TopBar({ title, backHref, action }: TopBarProps) {
         {backHref ? (
           <Link
             href={backHref}
+            aria-label="Back"
+            title="Back"
             className={cn(
-              'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+              'w-11 h-11 -ml-1.5 rounded-lg flex items-center justify-center shrink-0',
               'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]',
               'transition-colors'
             )}
@@ -29,9 +31,9 @@ export function TopBar({ title, backHref, action }: TopBarProps) {
             </svg>
           </Link>
         ) : (
-          <Link href="/dashboard" className="flex items-center gap-2 shrink-0 pressable">
+          <Link href="/dashboard" aria-label="Sweepstake Season home" title="Home" className="flex items-center gap-2 shrink-0 min-h-11 -ml-1 pl-1 pressable">
             {/* SVG shield mark */}
-            <svg viewBox="0 0 24 28" fill="none" className="w-6 h-7" aria-label="Sweepstake Season">
+            <svg viewBox="0 0 24 28" fill="none" className="w-6 h-7" aria-hidden="true">
               <path
                 d="M12 1L2 5v8c0 6.075 4.477 11.742 10 13 5.523-1.258 10-6.925 10-13V5L12 1Z"
                 fill="var(--accent)"
@@ -69,11 +71,12 @@ export function TopBar({ title, backHref, action }: TopBarProps) {
         <Link
           href="/settings"
           className={cn(
-            'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+            'w-11 h-11 -mr-1.5 rounded-lg flex items-center justify-center shrink-0',
             'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]',
             'transition-colors'
           )}
           aria-label="Settings"
+          title="Settings"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <circle cx="12" cy="12" r="3" />

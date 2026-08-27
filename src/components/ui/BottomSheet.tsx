@@ -44,6 +44,9 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
       {/* Sheet */}
       <div
         ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? 'bottom-sheet-title' : undefined}
         className={cn(
           'relative z-10 max-w-lg w-full mx-auto',
           'bg-[var(--bg-elevated)] rounded-t-[var(--radius-xl)]',
@@ -60,10 +63,13 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
 
         {title && (
           <div className="flex items-center justify-between px-4 pt-1 pb-3 border-b border-[var(--border)]">
-            <h3 className="font-semibold text-[var(--text-primary)] text-base">{title}</h3>
+            <h3 id="bottom-sheet-title" className="font-semibold text-[var(--text-primary)] text-base">{title}</h3>
             <button
+              type="button"
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+              aria-label="Close"
+              title="Close"
+              className="w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
                 <path d="M18 6 6 18M6 6l12 12" />
