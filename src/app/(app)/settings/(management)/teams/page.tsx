@@ -11,17 +11,16 @@ import type { League, Competition, Team } from '@/lib/supabase/types'
 
 export default function TeamsSettingsPage() {
   const [league, setLeague] = useState<League | null>(null)
-  const [competitions, setCompetitions] = useState<Competition[]>([])
+  const [competition, setCompetition] = useState<Competition | null>(null)
   const [allTeams, setAllTeams] = useState<Team[]>([])
-  const [assignedTeamIds, setAssignedTeamIds] = useState<Map<string, string[]>>(new Map())
+  const [assignedTeamIds, setAssignedTeamIds] = useState<Set<string>>(new Set())
   const [draftedTeamIds, setDraftedTeamIds] = useState<Set<string>>(new Set())
   const [scoredTeamIds, setScoredTeamIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeComp, setActiveComp] = useState<string>('')
   const [search, setSearch] = useState('')
   const [selectedTeams, setSelectedTeams] = useState<Set<string>>(new Set())
-  const [savedComp, setSavedComp] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
   const supabase = createClient()
 
@@ -34,38 +33,22 @@ export default function TeamsSettingsPage() {
     const { data: lg } = await supabase.from('sweepstake_leagues').select('*').eq('id', leagueId).maybeSingle()
     setLeague(lg)
     if (!lg) { setLoading(false); return }
-    const [{ data: comps }, { data: teams }, { data: tc }, { data: assignments }, { data: scores }] = await Promise.all([
-      supabase.from('competitions').select('*').eq('league_id', lg.id).order('display_order'),
+    const { data: comp } = await supabase.from('competitions').select('*').eq('league_id', lg.id).eq('enabled', true).order('display_order').limit(1).maybeSingle()
+    setCompetition(comp)
+    if (!comp) { setLoading(false); return }
+    const [{ data: teams }, { data: tc }, { data: assignments }, { data: scores }] = await Promise.all([
       supabase.from('teams').select('*').order('name'),
-      supabase.from('team_competitions').select('*').eq('league_id', lg.id),
+      supabase.from('team_competitions').select('team_id').eq('league_id', lg.id).eq('competition_id', comp.id),
       supabase.from('player_team_assignments').select('team_id').eq('league_id', lg.id),
       supabase.from('team_scores').select('team_id').eq('league_id', lg.id).gt('matches_played', 0),
     ])
-    setCompetitions(comps ?? [])
     setAllTeams(teams ?? [])
     setDraftedTeamIds(new Set((assignments ?? []).map((a: { team_id: string }) => a.team_id)))
     setScoredTeamIds(new Set((scores ?? []).map((s: { team_id: string }) => s.team_id)))
-    const map = new Map<string, string[]>()
-    for (const row of (tc ?? [])) {
-      const existing = map.get(row.team_id) ?? []
-      existing.push(row.competition_id)
-      map.set(row.team_id, existing)
-    }
-    setAssignedTeamIds(map)
-    const firstComp = comps?.[0]?.id ?? ''
-    setActiveComp(firstComp)
-    if (firstComp) {
-      const selected = new Set<string>()
-      for (const [teamId, compIds] of map) { if (compIds.includes(firstComp)) selected.add(teamId) }
-      setSelectedTeams(selected)
-    }
+    const assigned = new Set((tc ?? []).map((row: { team_id: string }) => row.team_id))
+    setAssignedTeamIds(assigned)
+    setSelectedTeams(new Set(assigned))
     setLoading(false)
-  }
-
-  function persistedSelection(compId: string): Set<string> {
-    const selected = new Set<string>()
-    for (const [teamId, compIds] of assignedTeamIds) { if (compIds.includes(compId)) selected.add(teamId) }
-    return selected
   }
 
   function setsEqual(a: Set<string>, b: Set<string>) {
@@ -74,14 +57,7 @@ export default function TeamsSettingsPage() {
     return true
   }
 
-  const hasUnsavedChanges = activeComp ? !setsEqual(selectedTeams, persistedSelection(activeComp)) : false
-
-  function handleCompChange(compId: string) {
-    if (compId === activeComp) return
-    if (hasUnsavedChanges && !confirm('You have unsaved team selection changes for the current competition. Switch competitions and discard them?')) return
-    setActiveComp(compId)
-    setSelectedTeams(persistedSelection(compId))
-  }
+  const hasUnsavedChanges = !setsEqual(selectedTeams, assignedTeamIds)
 
   function toggleTeam(teamId: string) {
     setSelectedTeams(prev => { const next = new Set(prev); if (next.has(teamId)) next.delete(teamId); else next.add(teamId); return next })
@@ -96,64 +72,53 @@ export default function TeamsSettingsPage() {
   }
 
   async function saveAssignments() {
-    if (!league || !activeComp) return
-    const removed = [...persistedSelection(activeComp)].filter(id => !selectedTeams.has(id))
+    if (!league || !competition) return
+    const removed = [...assignedTeamIds].filter(id => !selectedTeams.has(id))
     const removedAtRisk = removed.filter(id => draftedTeamIds.has(id) || scoredTeamIds.has(id))
     if (removedAtRisk.length > 0) {
       const names = removedAtRisk.map(id => allTeams.find(t => t.id === id)?.name ?? id).join(', ')
       if (!confirm(
-        `${removedAtRisk.length} team(s) you're removing from ${currentComp?.name ?? 'this competition'} already have drafted owners or recorded results: ${names}.\n\nRemoving them stops future results counting for this competition, but existing points and assignments stay on record. Continue?`
+        `${removedAtRisk.length} team(s) you're removing already have drafted owners or recorded results: ${names}.\n\nRemoving them stops future results counting, but existing points and assignments stay on record. Continue?`
       )) return
     }
     setSaving(true)
-    await supabase.from('team_competitions').delete().eq('league_id', league.id).eq('competition_id', activeComp)
+    await supabase.from('team_competitions').delete().eq('league_id', league.id).eq('competition_id', competition.id)
     if (selectedTeams.size > 0) {
-      await supabase.from('team_competitions').insert(Array.from(selectedTeams).map(teamId => ({ league_id: league.id, team_id: teamId, competition_id: activeComp })))
+      await supabase.from('team_competitions').insert(Array.from(selectedTeams).map(teamId => ({ league_id: league.id, team_id: teamId, competition_id: competition.id })))
     }
     setSaving(false)
-    setSavedComp(activeComp)
-    setTimeout(() => setSavedComp(null), 2000)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
     loadData()
   }
 
   const filteredTeams = allTeams.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.country.toLowerCase().includes(search.toLowerCase()))
-  const currentComp = competitions.find(c => c.id === activeComp)
   const teamsByCountry = filteredTeams.reduce((acc, team) => { if (!acc[team.country]) acc[team.country] = []; acc[team.country].push(team); return acc }, {} as Record<string, Team[]>)
 
-  if (loading) return <AppShell title="Assign Teams" backHref="/settings"><PageLoader /></AppShell>
+  if (loading) return <AppShell title="Team Pool" backHref="/settings"><PageLoader /></AppShell>
 
   return (
-    <AppShell title="Assign Teams" backHref="/settings">
+    <AppShell title="Team Pool" backHref="/settings">
       {!league ? (
         <EmptyState icon="🏆" title="Create a league first" />
-      ) : competitions.length === 0 ? (
-        <EmptyState icon="🌍" title="No competitions yet" description="Create a league to add competitions." />
+      ) : !competition ? (
+        <EmptyState icon="⚽" title="No competition set up" description="Create a league to set up the Premier League team pool." />
       ) : (
         <>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
-            Select which teams are in each competition. The draft will only use teams assigned to at least one competition.
+            Select which Premier League clubs are in play. The draft will only use teams selected here.
           </p>
           <div className="sticky top-0 z-10 -mx-4 px-4 pt-1 pb-2 bg-[var(--bg)]/95 backdrop-blur-sm border-b border-[var(--border)] mb-3">
-            <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-              {competitions.map(c => (
-                <button key={c.id} onClick={() => handleCompChange(c.id)} className={`shrink-0 min-h-9 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${activeComp === c.id ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)]'}`}>
-                  {c.short_name}
-                </button>
-              ))}
-            </div>
-            {currentComp && (
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{currentComp.name}</p>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    {selectedTeams.size} teams selected
-                    {hasUnsavedChanges && <span className="text-amber-400"> · Unsaved changes</span>}
-                    {savedComp === activeComp && <span className="text-emerald-400"> · ✓ Saved</span>}
-                  </p>
-                </div>
-                <Button size="sm" loading={saving} onClick={saveAssignments} disabled={!hasUnsavedChanges}>Save</Button>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{selectedTeams.size} teams selected</p>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  {hasUnsavedChanges && <span className="text-amber-400">Unsaved changes</span>}
+                  {saved && <span className="text-emerald-400">✓ Saved</span>}
+                </p>
               </div>
-            )}
+              <Button size="sm" loading={saving} onClick={saveAssignments} disabled={!hasUnsavedChanges}>Save</Button>
+            </div>
           </div>
           <div className="mb-3">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search teams..." />
@@ -173,7 +138,7 @@ export default function TeamsSettingsPage() {
                 <div className="space-y-1.5">
                   {teams.map(team => {
                     const isSelected = selectedTeams.has(team.id)
-                    const wasAssigned = persistedSelection(activeComp).has(team.id)
+                    const wasAssigned = assignedTeamIds.has(team.id)
                     const atRisk = wasAssigned && !isSelected && (draftedTeamIds.has(team.id) || scoredTeamIds.has(team.id))
                     return (
                       <button

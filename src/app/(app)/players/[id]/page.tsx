@@ -6,7 +6,6 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Avatar } from '@/components/ui/Avatar'
 import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
-import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { StatTile } from '@/components/ui/StatTile'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import Link from 'next/link'
@@ -56,7 +55,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
       supabase.from('player_scores').select('*').eq('league_id', leagueId).eq('player_id', id).maybeSingle(),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', leagueId).order('total_points', { ascending: false }),
       supabase.from('player_team_assignments')
-        .select('*, teams(*, team_competitions(competition_id, competitions(*)))')
+        .select('*, teams(*)')
         .eq('league_id', leagueId)
         .eq('player_id', id),
       supabase.from('power_up_activations').select('*').eq('league_id', leagueId).eq('player_id', id),
@@ -78,14 +77,14 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
       const orClause = teamIds.map((id: string) => `home_team_id.eq.${id},away_team_id.eq.${id}`).join(',')
       const [{ data: upcoming }, { data: recent }] = await Promise.all([
         supabase.from('fixtures')
-          .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+          .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
           .eq('league_id', leagueId)
           .eq('status', 'scheduled')
           .or(orClause)
           .order('kickoff_time')
           .limit(5),
         supabase.from('fixtures')
-          .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+          .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
           .eq('league_id', leagueId)
           .eq('status', 'completed')
           .or(orClause)
@@ -224,18 +223,12 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-0.5">Clubs</p>
           <div className="space-y-2">
             {teams.map((team: any) => {
-              const comps: any[] = (team.team_competitions ?? []).map((tc: any) => tc.competitions).filter(Boolean)
               return (
                 <Link key={team.id} href={`/teams/${team.id}`}>
                   <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 flex items-center gap-3 hover:bg-[var(--bg-card-hover)] transition-colors">
                     <TeamCrest team={team} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
-                      <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                        {comps.map((c: any) => (
-                          <CompetitionBadge key={c.id} shortName={c.short_name} name={c.name} type={c.competition_type} />
-                        ))}
-                      </div>
                     </div>
                     {team.league_position && (
                       <span className="text-[10px] text-[var(--text-muted)] shrink-0">#{team.league_position}</span>
@@ -300,12 +293,6 @@ function FixturePill({ fixture, myTeamIds, index, total }: { fixture: any; myTea
         index < total - 1 ? 'border-b border-[var(--border)]' : '',
         isHome || isAway ? 'border-l-2 border-l-[var(--accent)]' : '',
       ].join(' ')}>
-        {fixture.competition && (
-          <CompetitionBadge
-            shortName={fixture.competition.short_name}
-            type={fixture.competition.competition_type}
-          />
-        )}
         <TeamCrest team={myTeam} size="xs" />
         <span className="text-[10px] text-[var(--text-muted)] shrink-0">{isHome ? 'vs' : '@'}</span>
         <TeamCrest team={opp} size="xs" />

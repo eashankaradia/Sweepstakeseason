@@ -36,22 +36,9 @@ const adminSections = [
     ),
   },
   {
-    href: '/settings/competitions',
-    label: 'Competitions',
-    description: 'Enable leagues and European cups',
-    bg: 'bg-purple-500/12',
-    color: 'text-purple-400',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-      </svg>
-    ),
-  },
-  {
     href: '/settings/teams',
-    label: 'Teams',
-    description: 'Assign teams to competitions',
+    label: 'Team pool',
+    description: 'Choose which Premier League clubs are in play',
     bg: 'bg-emerald-500/12',
     color: 'text-emerald-400',
     icon: (
