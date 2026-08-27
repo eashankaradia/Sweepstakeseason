@@ -215,19 +215,27 @@ Dark-mode only app (no light/dark toggle).
 
 ---
 
-## Things that are NOT yet done (potential next tasks)
+## Current state (as of 2026-08-27)
 
-1. **Fixture import** — no match results in the DB yet; fixtures page exists but is empty. The fixtures need populating (manually or via an API like football-data.org with a free API key) before scores can accumulate. football-data.org API key is needed but the app's API layer isn't wired up yet.
+This section above (repo layout, Supabase project, tables, teams data) describes the app's *architecture*, which is still accurate. The rest of this doc — DEGENERATES/12 players, "fixtures not populated yet", "scoring engine not wired up", "draft not yet run" — describes the state at the end of Session 3 and is **stale**; a lot of unlogged work happened after that (PRs up to #58 on GitHub, this session found 3 Supabase edge functions already live: `sync-fixtures`, `sync-results`, `populate-standings`). Actual current state:
 
-2. **Scoring engine** — `scoring_rules` exist but there's no cron job / webhook to pull live results and update `team_scores` / `player_scores`. Would need an edge function or external cron calling football-data.org.
+- **League:** "Sweepstake 2026/27" (`a5f1bf65-ebd7-41bf-9b5a-38f33e372e5b`), status `active`.
+- **Players:** 5 — Vishal, Dillan, Shivam, Eashan, Tarnraj — 4 teams each, 20 teams total, 3 competitions (not the 12-player/7-competition setup described further up). If Adam and the rest of the original 6-friend group were meant to be in this league too, that's a product decision for eashan, not something this session changed.
+- **Fixtures:** 398 rows, 10 completed, rest scheduled. Scoring is live: `sync-results` writes `team_scores`/`player_scores` directly and reads per-league `scoring_rules` (falls back to 3/1/0 if a league has none).
+- **Draft:** real (20 assignments), and as of this session **locked** (`draft_locked = true`) — it was sitting unlocked with the season already underway, which left "Generate new draft / Save" live on `/draft` and one click away from wiping every assignment. Fixed 2026-08-27; see log below.
+- **Deployed:** yes, on Vercel (`sweepstakeseason.vercel.app`), auto-deploying from `main` on every push.
 
-3. **Deploy to Vercel** — the app builds cleanly (`npm run build` passes) but hasn't been deployed yet. Vercel needs: connect the GitHub repo, set env vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), deploy from the `claude/football-sweepstake-2026-azl5ph` branch (or after merging to `main`).
+## Known gaps / suggested next tasks
 
-4. **Logo gaps** — `logo_url` is NULL for: SV Elversberg, Deportivo La Coruña, Málaga, Como. To fix: find their football-data.org IDs and run `UPDATE teams SET logo_url = '...' WHERE name = '...'`.
+1. **`scoring_rules` seeding for future leagues** — `createLeague()` in `settings/league/page.tsx` already seeds `DEFAULT_SCORING_RULES` for new leagues, and the Scoring settings page now self-heals (seeds defaults on load if a league somehow has none — added 2026-08-27). The *existing* league's rules were backfilled manually this session. No further action needed unless a league still shows an empty Scoring page.
 
-5. **Draft** — not yet run. Once Vercel is live, eashan logs in and runs the draft from `/draft`.
+2. **Type-safety cleanup, partial** — `src/lib/supabase/types.ts` was a hand-maintained `Database` type that had drifted badly from the live schema (missing `Functions`, wrong nullability, missing tables like `user_profiles`/`league_memberships`/`power_up_activations`/`activity_feed`/`admin_settings`). This caused ~140 lines of `tsc --noEmit` errors app-wide (mostly `never` cascades) that `next build` silently ignores (`Skipping validation of types`). Regenerated `types.ts` from the live schema 2026-08-27, which cut that to ~40 — the remainder are real (but harmless-in-practice) `string | null` vs `string`-prop mismatches in a handful of components (`Avatar`, `TeamCrest`, `draft/page.tsx` mainly, where DB columns like `players.color`/`teams.short_name` are nullable but component props declare non-null). Worth a follow-up pass to either loosen those prop types or coalesce nulls at the call site. Re-run `mcp__Supabase__generate_typescript_types` and diff against `types.ts` periodically so this doesn't drift again.
 
-6. **Onboarding** — `league_memberships` table links users to leagues. When a new user signs up and has no membership, they land at `/onboarding`. This page needs to be checked/completed.
+3. **Logo gaps** — `logo_url` may still be NULL for some newly-promoted/lower-tier clubs. `TeamCrest` falls back to coloured initials gracefully, so this is cosmetic only.
+
+4. **Onboarding** (`/onboarding`) — links new signups to a league via `league_memberships`; hasn't been re-verified against the current 5-player league since the schema grew `user_profiles`/`league_memberships`. Worth a manual click-through if new players are ever added by self-signup rather than direct SQL.
+
+5. **Supabase Auth: leaked-password protection** is disabled (flagged by the security advisor). This is an Auth setting, not something reachable via SQL/migration — toggle it in the Supabase dashboard under Authentication → Policies if desired.
 
 ---
 
@@ -270,3 +278,5 @@ The remote Claude Code / Codex environment routes outbound HTTPS through a proxy
 | Session 2 | Fixed European competition teams: replaced incorrect lineup with actual 2025/26 qualifiers (UCL 18, UEL 9, ECL 4) |
 | Session 2 | Created `.gitignore`, force-synced feature branch to main, all changes committed and pushed |
 | Session 3 | UI overhaul: standings now a table with W/D/L/Pts columns + rank badges; dashboard adds a personalised "Your standing" hero card with player-colour gradient; my-teams converts to client component, highlights logged-in user, adds competition badges per team; teams page gets coloured competition section headers (indigo domestic / purple European); BottomNav active tab gets a pill highlight |
+| Sessions 4+ | (not logged here — see GitHub PR history, up to #58, for the real record: Supabase edge functions, power-ups, activity feed, monthly standings, charts/heatmap insights, and multiple rounds of UX/accessibility audit fixes across every screen) |
+| 2026-08-27 | Audited the live app end to end. Found and fixed two live bugs: (1) `scoring_rules` was empty for the active league, so the Scoring settings page rendered no editable rows at all — backfilled the 10 default rows and made the settings page self-heal if this ever happens again. (2) The season had started (10 completed fixtures, real points) but `draft_locked` was still `false`, leaving "Generate new draft / Save" live and one click from wiping all 20 team assignments — locked it. Also: fixed all `auth_rls_initplan` and `multiple_permissive_policies` Supabase advisor warnings (wrapped `auth.uid()`/`auth.role()` calls in RLS policies with `(select ...)`, folded `power_up_activations`'s redundant admin-all policy into the per-action ones), added missing indexes on unindexed foreign keys, and revoked `anon`/`public` EXECUTE on the `is_current_user_admin()` SECURITY DEFINER function (kept for `authenticated`, which the app's RLS policies need). Regenerated `src/lib/supabase/types.ts` from the live schema — the hand-maintained version had drifted (missing `Functions`, several tables, wrong nullability) and was silently causing ~140 lines of `tsc` errors across the app; down to ~40 real (mostly nullable-prop) mismatches now. Left `auth_leaked_password_protection` (a dashboard-only Auth setting) and the remaining nullable-prop type mismatches as follow-ups — see "Known gaps" above. | |
