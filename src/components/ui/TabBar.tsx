@@ -16,6 +16,7 @@ interface TabBarProps {
 export function TabBar({ tabs, active, onChange, className }: TabBarProps) {
   return (
     <div
+      role="tablist"
       className={cn(
         'flex rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-1 gap-1',
         className
@@ -24,9 +25,11 @@ export function TabBar({ tabs, active, onChange, className }: TabBarProps) {
       {tabs.map(tab => (
         <button
           key={tab.key}
+          role="tab"
+          aria-selected={active === tab.key}
           onClick={() => onChange(tab.key)}
           className={cn(
-            'flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
+            'flex-1 min-h-11 rounded-lg px-3 text-xs font-medium transition-all',
             active === tab.key
               ? 'bg-[var(--accent)] text-white shadow-sm'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
