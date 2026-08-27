@@ -7,7 +7,6 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
-import { CompetitionBadge } from '@/components/ui/CompetitionBadge'
 import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -17,7 +16,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const [owners, setOwners] = useState<any[]>([])
   const [teamScore, setTeamScore] = useState<any>(null)
   const [fixtures, setFixtures] = useState<any[]>([])
-  const [competitions, setCompetitions] = useState<any[]>([])
   const [insights, setInsights] = useState<{ standing: any; elo: any } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -37,7 +35,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     if (!t) { setLoading(false); return }
     setTeam(t)
 
-    const [{ data: assignments }, { data: score }, { data: fix }, { data: tc }] = await Promise.all([
+    const [{ data: assignments }, { data: score }, { data: fix }] = await Promise.all([
       supabase.from('player_team_assignments')
         .select('players(id,name,color,user_id)')
         .eq('league_id', leagueId)
@@ -48,21 +46,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         .eq('team_id', id)
         .maybeSingle(),
       supabase.from('fixtures')
-        .select(`*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
+        .select(`*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)`)
         .eq('league_id', leagueId)
         .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
         .order('kickoff_time', { ascending: false })
         .limit(20),
-      supabase.from('team_competitions')
-        .select('competitions(*)')
-        .eq('league_id', leagueId)
-        .eq('team_id', id),
     ])
 
     setOwners(((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean))
     setTeamScore(score)
     setFixtures((fix ?? []) as any[])
-    setCompetitions((tc ?? []).map((r: any) => r.competitions).filter(Boolean))
 
     fetchInsights(id)
 
@@ -107,14 +100,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           <h2 className="font-bold text-lg text-[var(--text-primary)] truncate">{team.name}</h2>
           <p className="text-xs text-[var(--text-secondary)]">{team.country}</p>
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-            {competitions.map((c: any) => (
-              <CompetitionBadge
-                key={c.id}
-                name={c.name}
-                shortName={c.short_name}
-                type={c.competition_type}
-              />
-            ))}
             {team.league_position && (
               <Badge variant="muted" className="text-[9px]">
                 #{team.league_position}
@@ -285,13 +270,6 @@ function FixtureRow({ fixture, teamId }: { fixture: any; teamId: string }) {
   return (
     <Link href={`/fixtures/${fixture.id}`}>
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 flex items-center gap-2 hover:border-[var(--accent)]/40 transition-colors">
-        {fixture.competition && (
-          <CompetitionBadge
-            shortName={(fixture.competition as any).short_name}
-            name={(fixture.competition as any).name}
-            type={(fixture.competition as any).competition_type}
-          />
-        )}
         <span className="text-xs text-[var(--text-secondary)] flex-1 truncate">
           {isHome ? 'vs' : '@'} {oppTeam?.name}
         </span>

@@ -30,21 +30,12 @@ export default function RulesPage() {
         </RuleSection>
 
         {/* Eligible competitions */}
-        <RuleSection icon="🌍" title="Which competitions count?">
-          <div className="space-y-2 mt-1">
-            <div className="flex items-center gap-2.5 rounded-lg bg-[var(--bg)] border border-emerald-500/20 px-3 py-2">
-              <span className="text-base">✅</span>
-              <div>
-                <p className="text-xs font-semibold text-emerald-400">Domestic leagues</p>
-                <p className="text-[10px] text-[var(--text-muted)]">Premier League</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg bg-[var(--bg)] border border-emerald-500/20 px-3 py-2">
-              <span className="text-base">✅</span>
-              <div>
-                <p className="text-xs font-semibold text-emerald-400">European competitions</p>
-                <p className="text-[10px] text-[var(--text-muted)]">Champions League, Europa League, Conference League</p>
-              </div>
+        <RuleSection icon="🏴" title="Which competitions count?">
+          <div className="flex items-center gap-2.5 rounded-lg bg-[var(--bg)] border border-emerald-500/20 px-3 py-2 mt-1">
+            <span className="text-base">✅</span>
+            <div>
+              <p className="text-xs font-semibold text-emerald-400">Premier League</p>
+              <p className="text-[10px] text-[var(--text-muted)]">The only competition this sweepstake tracks</p>
             </div>
           </div>
         </RuleSection>
@@ -53,9 +44,6 @@ export default function RulesPage() {
         <RuleSection icon="🎯" title="Team distribution">
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
             Teams are drawn randomly via the draft. Each player receives the same number of clubs.
-          </p>
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed mt-2">
-            For European competitions, teams are distributed equally across all players — so no one gets an unfair advantage from having more clubs in the Champions League.
           </p>
         </RuleSection>
 
@@ -120,10 +108,10 @@ export default function RulesPage() {
                 <Badge variant="warning" className="text-[9px] ml-auto">auto-awarded</Badge>
               </div>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                If your club beats a team that started the match <span className="font-semibold text-[var(--text-primary)]">5 or more league places above them</span>, you automatically earn a Giant Killer bonus on top of the normal win points.
+                If your club is in the <span className="font-semibold text-[var(--text-primary)]">bottom 6</span> of the table and beats a club in the <span className="font-semibold text-[var(--text-primary)]">top 6</span> — both as it stood right before kickoff — you automatically earn a Giant Killer bonus on top of the normal win points.
               </p>
               <p className="text-[10px] text-[var(--text-muted)]">
-                No activation needed — it's calculated automatically at full time. Rewards holding onto lower-ranked clubs throughout the season.
+                No activation needed — it's calculated automatically at full time. Only kicks in once every club has played 5+ matches, so the table has settled before it starts counting.
               </p>
             </div>
 

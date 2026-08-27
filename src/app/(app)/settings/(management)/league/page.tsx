@@ -11,12 +11,7 @@ import type { League } from '@/lib/supabase/types'
 import { DEFAULT_SCORING_RULES } from '@/lib/scoring'
 
 const DEFAULT_COMPETITIONS = [
-  { name: 'Premier League',    short_name: 'PL',  competition_type: 'domestic_league', country: 'England', display_order: 1 },
-  { name: 'La Liga',           short_name: 'LL',  competition_type: 'domestic_league', country: 'Spain',   display_order: 2 },
-  { name: 'Serie A',           short_name: 'SA',  competition_type: 'domestic_league', country: 'Italy',   display_order: 3 },
-  { name: 'Champions League',  short_name: 'UCL', competition_type: 'european',        country: null,      display_order: 4 },
-  { name: 'Europa League',     short_name: 'UEL', competition_type: 'european',        country: null,      display_order: 5 },
-  { name: 'Conference League', short_name: 'ECL', competition_type: 'european',        country: null,      display_order: 6 },
+  { name: 'Premier League', short_name: 'PL', competition_type: 'domestic_league', country: 'England', display_order: 1 },
 ] as const
 
 function generateCode(): string {

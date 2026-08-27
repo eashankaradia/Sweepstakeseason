@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
 import { formatDateTime } from '@/lib/utils'
+import { computeStandingsAsOf, giantKillerEligibility, type TeamRank } from '@/lib/giantKiller'
 
 type Player = { id: string; name: string; color: string }
 type MatchEvent = {
@@ -32,6 +33,7 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const [allOwners, setAllOwners] = useState<Map<string, Player>>(new Map())
   const [allPlayerScores, setAllPlayerScores] = useState<Map<string, number>>(new Map())
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [gkRanks, setGkRanks] = useState<Map<string, TeamRank> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const supabase = createClient()
@@ -46,7 +48,7 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
 
     const { data: fix } = await supabase
       .from('fixtures')
-      .select('*, competition:competitions(*), home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
+      .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')
       .eq('id', id)
       .maybeSingle()
 
@@ -108,6 +110,18 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
     setAwayScore(as_)
     setH2h(h2hFixtures ?? [])
 
+    if (fix.kickoff_time) {
+      const [{ data: compTeams }, { data: compFixtures }] = await Promise.all([
+        supabase.from('team_competitions').select('team_id').eq('competition_id', fix.competition_id),
+        supabase.from('fixtures')
+          .select('home_team_id, away_team_id, home_score, away_score, kickoff_time, status')
+          .eq('competition_id', fix.competition_id)
+          .eq('status', 'completed'),
+      ])
+      const teamIds = [...new Set((compTeams ?? []).map((r: any) => r.team_id))] as string[]
+      setGkRanks(computeStandingsAsOf(teamIds, (compFixtures ?? []) as any[], fix.kickoff_time))
+    }
+
     setLoading(false)
 
     if (fix.status === 'completed') {
@@ -157,8 +171,6 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   const homePts = hScore != null && aScore != null ? (hScore > aScore ? 3 : hScore === aScore ? 1 : 0) : null
   const awayPts = hScore != null && aScore != null ? (aScore > hScore ? 3 : hScore === aScore ? 1 : 0) : null
 
-  // Giant Killer: only in domestic leagues, check if applicable
-  const compType = (fixture.competition as any)?.competition_type
   const hasOdds = fixture.home_odds != null || fixture.draw_odds != null || fixture.away_odds != null
 
   // Power-up projections
@@ -169,11 +181,8 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
 
   return (
     <AppShell title="Match Centre" backHref="/fixtures">
-      {/* Competition / meta */}
+      {/* Match meta */}
       <div className="flex items-center gap-2 mb-3">
-        <Badge variant={compType === 'european' ? 'purple' : 'default'} className="text-[10px]">
-          {(fixture.competition as any)?.short_name}
-        </Badge>
         {fixture.round && <span className="text-[10px] text-[var(--text-muted)]">{fixture.round}</span>}
         {fixture.matchday && <span className="text-[10px] text-[var(--text-muted)]">MD{fixture.matchday}</span>}
         {isLive && (
@@ -271,11 +280,8 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
       {/* Giant Killer Banner (upcoming/live only) */}
       {!isCompleted && (
         <GiantKillerBanner
-          homeTeam={fixture.home_team}
-          awayTeam={fixture.away_team}
-          homeOwners={homeOwner}
-          awayOwners={awayOwner}
-          allPlayerScores={allPlayerScores}
+          fixture={fixture}
+          gkRanks={gkRanks}
         />
       )}
 
@@ -360,10 +366,10 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
       )}
 
       {/* Giant Killer check (informational) */}
-      {isCompleted && compType === 'domestic_league' && hScore != null && aScore != null && (
+      {isCompleted && hScore != null && aScore != null && (
         <GiantKillerCheck
-          homeTeam={fixture.home_team}
-          awayTeam={fixture.away_team}
+          fixture={fixture}
+          gkRanks={gkRanks}
           homeScore={hScore}
           awayScore={aScore}
         />
@@ -632,33 +638,22 @@ function TeamStatCard({ team, score, owners }: { team: any; score: any; owners: 
 }
 
 function GiantKillerBanner({
-  homeTeam,
-  awayTeam,
-  homeOwners,
-  awayOwners,
-  allPlayerScores,
+  fixture,
+  gkRanks,
 }: {
-  homeTeam: any
-  awayTeam: any
-  homeOwners: Player[]
-  awayOwners: Player[]
-  allPlayerScores: Map<string, number>
+  fixture: any
+  gkRanks: Map<string, TeamRank> | null
 }) {
-  if (homeOwners.length === 0 || awayOwners.length === 0) return null
-
-  const homeTotal = homeOwners.reduce((sum, o) => sum + (allPlayerScores.get(o.id) ?? 0), 0)
-  const awayTotal = awayOwners.reduce((sum, o) => sum + (allPlayerScores.get(o.id) ?? 0), 0)
-  const gap = Math.abs(homeTotal - awayTotal)
-  if (gap < 5) return null
-
-  const underdogTeam = homeTotal < awayTotal ? homeTeam : awayTeam
+  const { eligible, bottomTeamId } = giantKillerEligibility(fixture.home_team_id, fixture.away_team_id, gkRanks)
+  if (!eligible) return null
+  const underdogTeam = bottomTeamId === fixture.home_team_id ? fixture.home_team : fixture.away_team
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 mb-3">
       <div className="flex items-center gap-2">
         <span className="text-lg">⚔️</span>
         <p className="text-xs font-semibold text-amber-400">
-          Giant Killer opportunity — {underdogTeam?.short_name || underdogTeam?.name} win earns +3 bonus points
+          Giant Killer chance — {underdogTeam?.short_name || underdogTeam?.name} (bottom 6) win earns a bonus for the owner
         </p>
       </div>
     </div>
@@ -666,25 +661,19 @@ function GiantKillerBanner({
 }
 
 function GiantKillerCheck({
-  homeTeam, awayTeam, homeScore, awayScore,
+  fixture, gkRanks, homeScore, awayScore,
 }: {
-  homeTeam: any; awayTeam: any; homeScore: number; awayScore: number
+  fixture: any; gkRanks: Map<string, TeamRank> | null; homeScore: number; awayScore: number
 }) {
-  const homePos = homeTeam?.league_position
-  const awayPos = awayTeam?.league_position
-  if (!homePos || !awayPos) return null
+  if (homeScore === awayScore) return null
+  const { eligible, bottomTeamId, topTeamId } = giantKillerEligibility(fixture.home_team_id, fixture.away_team_id, gkRanks)
+  const winnerId = homeScore > awayScore ? fixture.home_team_id : fixture.away_team_id
+  if (!eligible || winnerId !== bottomTeamId) return null
 
-  const homeWon = homeScore > awayScore
-  const awayWon = awayScore > homeScore
-  if (!homeWon && !awayWon) return null
-
-  const winner = homeWon ? homeTeam : awayTeam
-  const loser = homeWon ? awayTeam : homeTeam
-  const winnerPos = homeWon ? homePos : awayPos
-  const loserPos = homeWon ? awayPos : homePos
-  const gap = loserPos - winnerPos
-
-  if (gap < 5) return null
+  const winner = bottomTeamId === fixture.home_team_id ? fixture.home_team : fixture.away_team
+  const loser = topTeamId === fixture.home_team_id ? fixture.home_team : fixture.away_team
+  const winnerRank = gkRanks?.get(bottomTeamId!)?.rank
+  const loserRank = gkRanks?.get(topTeamId!)?.rank
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 mb-3">
@@ -693,7 +682,7 @@ function GiantKillerCheck({
         <div>
           <p className="text-xs font-bold text-amber-400">Giant Killer!</p>
           <p className="text-[10px] text-[var(--text-secondary)]">
-            {winner.short_name || winner.name} (#{winnerPos}) beat {loser.short_name || loser.name} (#{loserPos}) — {gap} places higher
+            {winner.short_name || winner.name} (#{winnerRank}) beat {loser.short_name || loser.name} (#{loserRank}) — bottom 6 beating a top 6 side
           </p>
         </div>
       </div>
