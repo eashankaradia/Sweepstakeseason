@@ -36,12 +36,7 @@ export function TopBar({ title, backHref, action }: TopBarProps) {
             <svg viewBox="0 0 24 28" fill="none" className="w-6 h-7" aria-hidden="true">
               <path
                 d="M12 1L2 5v8c0 6.075 4.477 11.742 10 13 5.523-1.258 10-6.925 10-13V5L12 1Z"
-                fill="var(--accent)"
-              />
-              <path
-                d="M12 1L2 5v8c0 6.075 4.477 11.742 10 13 5.523-1.258 10-6.925 10-13V5L12 1Z"
                 fill="url(#shield-grad)"
-                fillOpacity="0.35"
               />
               <path
                 d="M8 13.5l2.5 2.5L16 10.5"
@@ -51,9 +46,9 @@ export function TopBar({ title, backHref, action }: TopBarProps) {
                 strokeLinejoin="round"
               />
               <defs>
-                <linearGradient id="shield-grad" x1="12" y1="1" x2="12" y2="27" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="white" />
-                  <stop offset="1" stopColor="transparent" />
+                <linearGradient id="shield-grad" x1="2" y1="1" x2="22" y2="27" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="var(--brand-purple-light)" />
+                  <stop offset="1" stopColor="var(--accent)" />
                 </linearGradient>
               </defs>
             </svg>

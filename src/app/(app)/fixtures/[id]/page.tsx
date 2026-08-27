@@ -225,7 +225,7 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
           {/* Score */}
           <div className="shrink-0 text-center px-2">
             {(isCompleted || isLive) ? (
-              <div className="text-4xl font-black text-[var(--text-primary)] tabular-nums">
+              <div className="font-display text-4xl font-black text-[var(--text-primary)] tabular-nums">
                 {fixture.home_score ?? '–'}<span className="text-[var(--text-muted)] mx-1">:</span>{fixture.away_score ?? '–'}
               </div>
             ) : (

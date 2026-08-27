@@ -18,10 +18,14 @@
   --text-secondary: #9ca3b8;
   --text-muted: #5c6080;
 
-  /* Brand violet */
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-subtle: rgba(99,102,241,0.12);
+  /* Brand — Premier League inspired electric cyan */
+  --accent: #22d3ee;
+  --accent-hover: #06b6d4;
+  --accent-subtle: rgba(34,211,238,0.12);
+
+  /* Brand — Premier League inspired deep purple, used decoratively (crest mark) */
+  --brand-purple: #3d1a5b;
+  --brand-purple-light: #6d28d9;
 
   /* Semantic colours */
   --green: #10b981;
@@ -54,6 +58,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --font-display: var(--font-barlow), -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* ── Reset ── */
@@ -105,22 +110,27 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ── Typography helpers ── */
+/* Bold condensed display face — the scoreboard/broadcast-graphics feel of
+   top-flight football branding — used for headline numbers and labels. */
 .text-display {
-  font-size: 2rem;
-  font-weight: 900;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  font-family: var(--font-barlow), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
 }
 .text-hero {
-  font-size: 2.5rem;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.03em;
+  font-family: var(--font-barlow), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 .label-caps {
-  font-size: 10px;
+  font-family: var(--font-barlow), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-muted);
 }

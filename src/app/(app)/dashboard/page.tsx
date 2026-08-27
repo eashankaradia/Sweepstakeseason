@@ -566,7 +566,7 @@ function YourStandingCard({ myEntry, myPos, posDelta, weeklyPts, form }: {
             )}
           </div>
           <div className="text-right shrink-0">
-            <p className="font-black text-2xl text-[var(--text-primary)] leading-none tabular-nums">{myEntry.totalPoints}</p>
+            <p className="font-display font-black text-2xl text-[var(--text-primary)] leading-none tabular-nums">{myEntry.totalPoints}</p>
             <p className="text-[10px] text-[var(--text-muted)] mt-0.5">pts total</p>
             {weeklyPts !== 0 && (
               <p className={`text-[11px] font-bold mt-1 ${weeklyPts > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}>
