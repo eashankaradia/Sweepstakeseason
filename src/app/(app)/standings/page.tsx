@@ -182,17 +182,23 @@ export default function StandingsPage() {
       playerTeamsMap.get(a.player_id)!.push(a.teams)
     }
 
-    // Aggregate GF/GA per team across all competitions
+    // Aggregate GF/GA/points per team across all competitions
     const teamGF = new Map<string, number>()
     const teamGA = new Map<string, number>()
+    const teamPts = new Map<string, number>()
     for (const ts of (teamScoresData ?? [])) {
       teamGF.set(ts.team_id, (teamGF.get(ts.team_id) ?? 0) + ts.goals_for)
       teamGA.set(ts.team_id, (teamGA.get(ts.team_id) ?? 0) + ts.goals_against)
+      teamPts.set(ts.team_id, (teamPts.get(ts.team_id) ?? 0) + (ts.total_points ?? 0))
     }
 
     const rows: StandingEntry[] = (playersData ?? []).map((p: any) => {
       const score = (playerScores ?? []).find((s: any) => s.player_id === p.id)
-      const teams = (assignmentsData ?? []).filter((a: any) => a.player_id === p.id).map((a: any) => a.teams).filter(Boolean)
+      const teams = (assignmentsData ?? [])
+        .filter((a: any) => a.player_id === p.id)
+        .map((a: any) => a.teams)
+        .filter(Boolean)
+        .sort((a: any, b: any) => (teamPts.get(b.id) ?? 0) - (teamPts.get(a.id) ?? 0))
       const gf = teams.reduce((sum: number, t: any) => sum + (teamGF.get(t.id) ?? 0), 0)
       const ga = teams.reduce((sum: number, t: any) => sum + (teamGA.get(t.id) ?? 0), 0)
       const teamIds = teams.map((t: any) => t.id)
@@ -611,21 +617,23 @@ function TablesView({
     return <EmptyState icon="📊" title="No teams yet" description="Choose the team pool in Settings and run the draft." />
   }
 
-  function OwnerPills({ owners }: { owners: any[] }) {
-    if (owners.length === 0) return <span className="text-[9px] text-[var(--text-muted)]">—</span>
-    const primary = owners[0]
-    const extra = owners.length - 1
+  // Crest with the owner's initials badged in the corner — communicates
+  // ownership without needing a dedicated table column.
+  function CrestWithOwner({ team, owners }: { team: any; owners: any[] }) {
+    const owner = owners[0]
+    const initials = owner ? owner.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() : null
     return (
-      <Link
-        href={`/players/${primary.id}`}
-        onClick={e => e.stopPropagation()}
-        className="inline-flex items-center gap-1 max-w-full text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none hover:opacity-80 transition-opacity"
-        style={{ backgroundColor: `${primary.color}20`, color: primary.color, border: `1px solid ${primary.color}40` }}
-        title={owners.map((o: any) => o.name).join(', ')}
-      >
-        <span className="truncate">{primary.name.split(' ')[0]}</span>
-        {extra > 0 && <span className="shrink-0">+{extra}</span>}
-      </Link>
+      <div className="relative shrink-0" title={owners.map((o: any) => o.name).join(', ')}>
+        <TeamCrest team={team} size="xs" />
+        {initials && (
+          <span
+            className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center text-[6px] font-black border border-[var(--bg-card)] leading-none"
+            style={{ backgroundColor: owner.color, color: '#fff' }}
+          >
+            {initials}
+          </span>
+        )}
+      </div>
     )
   }
 
@@ -646,54 +654,43 @@ function TablesView({
     }
   }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || (a.team.league_position ?? 999) - (b.team.league_position ?? 999))
 
+  const gridCols = '18px 24px 1fr 22px 22px 22px 22px 28px 32px'
+
   return (
     <div className="rounded-xl border border-[var(--border)] overflow-hidden mb-5">
-      <div className="text-[9px] text-[var(--text-muted)] text-right px-3 py-1 border-b border-[var(--border)]/30 bg-[var(--bg-card)]">
-        ← scroll for W/D/L/GD →
+      <div className="grid items-center gap-1 px-2.5 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50" style={{ gridTemplateColumns: gridCols }}>
+        <span />
+        <span />
+        <span className="text-[9px] text-[var(--text-muted)] font-medium">Club</span>
+        <span className="text-[9px] text-[var(--text-muted)] text-center">P</span>
+        <span className="text-[9px] text-emerald-400 text-center">W</span>
+        <span className="text-[9px] text-amber-400 text-center">D</span>
+        <span className="text-[9px] text-red-400 text-center">L</span>
+        <span className="text-[9px] text-[var(--text-muted)] text-center">GD</span>
+        <span className="text-[9px] text-[var(--text-muted)] text-right">Pts</span>
       </div>
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: 400 }}>
-          <div className="flex items-center gap-0 px-2 py-1.5 bg-[var(--bg-card)] border-b border-[var(--border)]/50">
-            <span className="w-6 text-[9px] text-[var(--text-muted)] text-center shrink-0">#</span>
-            <span className="w-6 shrink-0" />
-            <span className="w-[92px] text-[9px] text-[var(--text-muted)] shrink-0">Club</span>
-            <span className="w-[72px] text-[9px] text-[var(--text-muted)] shrink-0">Owner</span>
-            <span className="w-10 text-[9px] text-[var(--text-muted)] text-right shrink-0">Pts</span>
-            <span className="w-8 text-[9px] text-[var(--text-muted)] text-center shrink-0">P</span>
-            <span className="w-8 text-[9px] text-emerald-400 text-center shrink-0">W</span>
-            <span className="w-8 text-[9px] text-amber-400 text-center shrink-0">D</span>
-            <span className="w-8 text-[9px] text-red-400 text-center shrink-0">L</span>
-            <span className="w-10 text-[9px] text-[var(--text-muted)] text-center shrink-0">GD</span>
-          </div>
-          {rows.map((row, idx) => {
-            const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
-            const primaryOwner = row.owners[0]
-            return (
-              <Link
-                key={row.team.id}
-                href={`/teams/${row.team.id}`}
-                className="flex items-center gap-0 px-2 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[46px] hover:bg-[var(--bg-card-hover)] transition-colors"
-                style={{ borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
-              >
-                <span className="w-6 text-[10px] text-[var(--text-muted)] text-center shrink-0">{idx + 1}</span>
-                <div className="w-6 shrink-0"><TeamCrest team={row.team} size="xs" /></div>
-                <div className="w-[92px] shrink-0 min-w-0 pr-1">
-                  <span className="text-[11px] text-[var(--text-primary)] truncate block leading-tight">{row.team.short_name || row.team.name}</span>
-                </div>
-                <div className="w-[72px] shrink-0 min-w-0 pr-1">
-                  <OwnerPills owners={row.owners} />
-                </div>
-                <span className="w-10 text-[11px] font-bold text-[var(--text-primary)] text-right shrink-0">{row.pts}</span>
-                <span className="w-8 text-[10px] text-[var(--text-secondary)] text-center shrink-0">{row.p}</span>
-                <span className="w-8 text-[10px] text-emerald-400 text-center shrink-0">{row.w}</span>
-                <span className="w-8 text-[10px] text-amber-400 text-center shrink-0">{row.d}</span>
-                <span className="w-8 text-[10px] text-red-400 text-center shrink-0">{row.l}</span>
-                <span className={`w-10 text-[10px] text-center font-medium shrink-0 ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
-              </Link>
-            )
-          })}
-        </div>
-      </div>
+      {rows.map((row, idx) => {
+        const gdColor = row.gd > 0 ? 'text-emerald-400' : row.gd < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'
+        const primaryOwner = row.owners[0]
+        return (
+          <Link
+            key={row.team.id}
+            href={`/teams/${row.team.id}`}
+            className="grid items-center gap-1 px-2.5 py-2 border-b border-[var(--border)]/40 last:border-0 bg-[var(--bg-card)] min-h-[44px] hover:bg-[var(--bg-card-hover)] transition-colors"
+            style={{ gridTemplateColumns: gridCols, borderLeft: primaryOwner ? `3px solid ${primaryOwner.color}` : '3px solid transparent' }}
+          >
+            <span className="text-[10px] text-[var(--text-muted)] text-center tabular-nums">{idx + 1}</span>
+            <CrestWithOwner team={row.team} owners={row.owners} />
+            <span className="text-[11px] text-[var(--text-primary)] truncate leading-tight min-w-0">{row.team.short_name || row.team.name}</span>
+            <span className="text-[10px] text-[var(--text-secondary)] text-center tabular-nums">{row.p}</span>
+            <span className="text-[10px] text-emerald-400 text-center tabular-nums">{row.w}</span>
+            <span className="text-[10px] text-amber-400 text-center tabular-nums">{row.d}</span>
+            <span className="text-[10px] text-red-400 text-center tabular-nums">{row.l}</span>
+            <span className={`text-[10px] text-center font-medium tabular-nums ${gdColor}`}>{row.gd > 0 ? `+${row.gd}` : row.gd}</span>
+            <span className="text-[11px] font-bold text-[var(--text-primary)] text-right tabular-nums">{row.pts}</span>
+          </Link>
+        )
+      })}
     </div>
   )
 }

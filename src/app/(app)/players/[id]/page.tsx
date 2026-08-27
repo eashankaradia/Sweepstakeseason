@@ -23,6 +23,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
   const [player, setPlayer] = useState<any>(null)
   const [score, setScore] = useState<any>(null)
   const [teams, setTeams] = useState<any[]>([])
+  const [teamPoints, setTeamPoints] = useState<Map<string, number>>(new Map())
   const [upcomingFixtures, setUpcomingFixtures] = useState<any[]>([])
   const [recentFixtures, setRecentFixtures] = useState<any[]>([])
   const [powerUps, setPowerUps] = useState<any[]>([])
@@ -51,6 +52,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
       { data: allScores },
       { data: assignments },
       { data: pups },
+      { data: teamScores },
     ] = await Promise.all([
       supabase.from('player_scores').select('*').eq('league_id', leagueId).eq('player_id', id).maybeSingle(),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', leagueId).order('total_points', { ascending: false }),
@@ -59,6 +61,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
         .eq('league_id', leagueId)
         .eq('player_id', id),
       supabase.from('power_up_activations').select('*').eq('league_id', leagueId).eq('player_id', id),
+      supabase.from('team_scores').select('team_id, total_points').eq('league_id', leagueId),
     ])
 
     setScore(playerScore)
@@ -69,8 +72,16 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
     setPosition(pos >= 0 ? pos + 1 : null)
     setTotalPlayers(sorted.length)
 
-    const teamList = (assignments ?? []).map((a: any) => a.teams).filter(Boolean)
+    const teamPtsMap = new Map<string, number>()
+    for (const ts of (teamScores ?? []) as any[]) {
+      teamPtsMap.set(ts.team_id, (teamPtsMap.get(ts.team_id) ?? 0) + (ts.total_points ?? 0))
+    }
+    const teamList = (assignments ?? [])
+      .map((a: any) => a.teams)
+      .filter(Boolean)
+      .sort((a: any, b: any) => (teamPtsMap.get(b.id) ?? 0) - (teamPtsMap.get(a.id) ?? 0))
     setTeams(teamList)
+    setTeamPoints(teamPtsMap)
 
     if (teamList.length > 0) {
       const teamIds = teamList.map((t: any) => t.id)
@@ -230,9 +241,9 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm text-[var(--text-primary)] truncate">{team.name}</p>
                     </div>
-                    {team.league_position && (
-                      <span className="text-[10px] text-[var(--text-muted)] shrink-0">#{team.league_position}</span>
-                    )}
+                    <span className="text-xs font-bold text-[var(--text-primary)] shrink-0 tabular-nums">
+                      {teamPoints.get(team.id) ?? 0}<span className="text-[9px] text-[var(--text-secondary)] font-normal"> pts</span>
+                    </span>
                   </div>
                 </Link>
               )
