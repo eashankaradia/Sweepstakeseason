@@ -375,13 +375,12 @@ export default function DraftPage() {
         ) : (
           <>
             <div className="space-y-2">
-              {currentAlloc.map(({ player, teams, euCount }, i) => (
+              {currentAlloc.map(({ player, teams }, i) => (
                 <Card key={i}>
                   <div className="flex items-center gap-2 mb-2.5">
                     <Avatar name={player.name} color={player.color} size="sm" />
                     <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{player.name}</span>
                     <span className="text-xs text-[var(--text-muted)]">{teams.length} teams</span>
-                    {euCount > 0 && <Badge variant="purple" className="text-[9px]">{euCount} EU</Badge>}
                   </div>
                   <div className="space-y-1.5">
                     {teams.map((team: any) => {
@@ -600,8 +599,8 @@ export default function DraftPage() {
         }
 
         const rows = allocations.length > 0
-          ? allocations.map(a => ({ id: a.playerId, name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, euCount: a.europeanCount, avgPosition: a.avgPosition, isPreview: true }))
-          : currentAlloc.map(({ player, teams, euCount }) => ({ id: player.id, name: player.name, color: player.color, teams, euCount, avgPosition: null as number | null, isPreview: false }))
+          ? allocations.map(a => ({ id: a.playerId, name: a.playerName, color: players.find(p => p.id === a.playerId)?.color ?? '#6366f1', teams: a.teams, avgPosition: a.avgPosition, isPreview: true }))
+          : currentAlloc.map(({ player, teams }) => ({ id: player.id, name: player.name, color: player.color, teams, avgPosition: null as number | null, isPreview: false }))
 
         return (
           <div>
@@ -614,7 +613,6 @@ export default function DraftPage() {
                     <span className="font-medium text-sm text-[var(--text-primary)] flex-1">{entry.name}</span>
                     {entry.avgPosition != null && <span className="text-[10px] text-[var(--text-muted)]">avg pos {entry.avgPosition}</span>}
                     <span className="text-xs text-[var(--text-muted)]">{entry.teams.length} teams</span>
-                    {entry.euCount > 0 && <Badge variant="purple" className="text-[9px]">{entry.euCount} EU</Badge>}
                   </div>
                   <div className="space-y-1.5">
                     {entry.teams.map((team: any) => {
