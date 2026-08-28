@@ -746,12 +746,10 @@ function LineChart({
         <p className="text-[11px] font-bold text-[var(--text-primary)]">{title}</p>
         {yLabel && <p className="text-[9px] text-[var(--text-muted)] mt-0.5">{yLabel}</p>}
       </div>
-      <div className="overflow-x-auto pb-1">
+      <div className="pb-1" style={{ aspectRatio: `${W} / ${H}` }}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          width={W}
-          height={H}
-          style={{ display: 'block', minWidth: W }}
+          className="block w-full h-full"
         >
           {/* Grid lines */}
           {gridVals.map((v, i) => {
@@ -774,7 +772,10 @@ function LineChart({
             </text>
           ))}
           <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">Game</text>
-          {/* Series lines */}
+          {/* Series lines — every point gets a small marker (not just the
+              endpoint) so two players who finish on the same total, or
+              cross paths, stay visually distinguishable rather than one
+              line's endpoint hiding behind another's. */}
           {series.map(({ player, values }) => {
             if (values.length < 1) return null
             const pts = values.map((v, i) => `${xCoord(i)},${yCoord(v)}`).join(' ')
@@ -783,7 +784,10 @@ function LineChart({
             return (
               <g key={player.id}>
                 <polyline points={pts} fill="none" stroke={player.color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
-                <circle cx={endX} cy={endY} r="3" fill={player.color} />
+                {values.map((v, i) => (
+                  <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="1.5" fill={player.color} />
+                ))}
+                <circle cx={endX} cy={endY} r="3.5" fill={player.color} stroke="var(--bg-card)" strokeWidth="1.5" />
               </g>
             )
           })}
@@ -940,24 +944,35 @@ function ChartsView({
   // We'll reconstruct step-by-step rank per game number
   const playerOrder = players.filter(p => (cumulMap.get(p.id) ?? []).length > 0)
 
+  // Every player doesn't necessarily have the same number of activity_feed
+  // entries yet (postponements, different fixture counts per club, etc.), so
+  // pad every series out to the longest one by carrying the last known value
+  // forward — otherwise a line stops wherever that player's data runs out
+  // instead of reaching the right edge of the chart.
+  const maxGames = Math.max(...playerOrder.map(p => (cumulMap.get(p.id) ?? []).length), 1)
+  function padded(vals: number[]): number[] {
+    if (vals.length === 0 || vals.length >= maxGames) return vals
+    const last = vals[vals.length - 1]
+    return [...vals, ...Array(maxGames - vals.length).fill(last)]
+  }
+
   // Points race series
   const pointsSeries: PlayerSeries[] = playerOrder.map(p => ({
     player: p,
-    values: cumulMap.get(p.id) ?? [],
+    values: padded(cumulMap.get(p.id) ?? []),
   }))
 
   // Position race: at each game index, rank players
-  const maxGames = Math.max(...playerOrder.map(p => (cumulMap.get(p.id) ?? []).length), 1)
   const positionSeries: PlayerSeries[] = playerOrder.map(p => {
     const vals: number[] = []
     const pVals = cumulMap.get(p.id) ?? []
-    for (let i = 0; i < pVals.length; i++) {
+    for (let i = 0; i < maxGames; i++) {
       // Get each player's pts at game i (use last known value if they played fewer games)
       const snapshot = playerOrder.map(other => {
         const ov = cumulMap.get(other.id) ?? []
         return ov[i] ?? (ov[ov.length - 1] ?? 0)
       })
-      const myPts = pVals[i]
+      const myPts = pVals[i] ?? (pVals[pVals.length - 1] ?? 0)
       const rank = snapshot.filter(v => v > myPts).length + 1
       vals.push(rank)
     }
