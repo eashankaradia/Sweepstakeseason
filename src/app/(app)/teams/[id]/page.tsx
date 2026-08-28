@@ -10,6 +10,12 @@ import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinn
 import { formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
 
+function vibrate(pattern: number | number[]) {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(pattern)
+  }
+}
+
 export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [team, setTeam] = useState<any>(null)
@@ -17,6 +23,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const [teamScore, setTeamScore] = useState<any>(null)
   const [fixtures, setFixtures] = useState<any[]>([])
   const [insights, setInsights] = useState<{ standing: any; elo: any } | null>(null)
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [powerUps, setPowerUps] = useState<any[]>([])
+  const [activatingMonth, setActivatingMonth] = useState<string | null>(null)
+  const [donMsg, setDonMsg] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const supabase = createClient()
@@ -34,6 +44,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     const { data: t } = await supabase.from('teams').select('*').eq('id', id).maybeSingle()
     if (!t) { setLoading(false); return }
     setTeam(t)
+
+    const { data: authData } = await supabase.auth.getUser()
+    const uid = authData?.user?.id
 
     const [{ data: assignments }, { data: score }, { data: fix }] = await Promise.all([
       supabase.from('player_team_assignments')
@@ -53,9 +66,25 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         .limit(80),
     ])
 
-    setOwners(((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean))
+    const ownerList = ((assignments ?? []) as any[]).map((a: any) => a.players).filter(Boolean)
+    setOwners(ownerList)
     setTeamScore(score)
     setFixtures((fix ?? []) as any[])
+
+    const myOwner = uid ? ownerList.find((o: any) => o.user_id === uid) : null
+    setMyPlayerId(myOwner?.id ?? null)
+    if (myOwner?.id) {
+      const { data: pups } = await supabase
+        .from('power_up_activations')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('player_id', myOwner.id)
+        .eq('power_up_type', 'double_or_nothing')
+        .neq('status', 'cancelled')
+      setPowerUps(pups ?? [])
+    } else {
+      setPowerUps([])
+    }
 
     fetchInsights(id)
 
@@ -64,6 +93,48 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       setError(true)
       setLoading(false)
     }
+  }
+
+  async function activateDoubleOrNothing(month: string, fixtureIds: string[]) {
+    if (!myPlayerId || fixtureIds.length === 0) return
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId) return
+    setActivatingMonth(month)
+    const rows = fixtureIds.map(fid => ({
+      league_id: leagueId,
+      player_id: myPlayerId,
+      power_up_type: 'double_or_nothing',
+      fixture_id: fid,
+      team_id: id,
+      season_month: month,
+      status: 'pending',
+    }))
+    const { error: insertError } = await supabase.from('power_up_activations').insert(rows)
+    setActivatingMonth(null)
+    if (!insertError) {
+      vibrate([10, 50, 10])
+      setDonMsg(`⚡ Double or Nothing locked in for ${new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}.`)
+      setTimeout(() => setDonMsg(''), 4000)
+      load()
+    }
+  }
+
+  async function cancelDoubleOrNothing(month: string) {
+    if (!myPlayerId) return
+    const leagueId = getLeagueIdCookie()
+    if (!leagueId) return
+    setActivatingMonth(month)
+    await supabase
+      .from('power_up_activations')
+      .delete()
+      .eq('league_id', leagueId)
+      .eq('player_id', myPlayerId)
+      .eq('team_id', id)
+      .eq('season_month', month)
+      .eq('status', 'pending')
+    setActivatingMonth(null)
+    vibrate(5)
+    load()
   }
 
   async function fetchInsights(teamId: string) {
@@ -87,8 +158,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     return 'L'
   }).reverse()
 
+  const isMyTeam = !!myPlayerId
+  // A player can only Double or Nothing a given club once, ever, and only
+  // one club at a time across their whole squad each calendar month.
+  const usedTeamIds = new Set(powerUps.map((p: any) => p.team_id))
+  const usedMonths = new Set(powerUps.map((p: any) => p.season_month))
+  const donEligible = isMyTeam && !usedTeamIds.has(id)
+  const activeDonMonth = powerUps.find((p: any) => p.team_id === id)?.season_month ?? null
+
   return (
     <AppShell title={team.short_name || team.name} backHref="/teams">
+      {donMsg && (
+        <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2.5 mb-3 text-xs font-medium text-[var(--accent)]">
+          {donMsg}
+        </div>
+      )}
       {/* Team hero */}
       <div
         className="rounded-2xl p-4 mb-3 border flex items-center gap-4"
@@ -240,7 +324,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       {fixtures.length > 0 && (
         <div className="mb-3">
           <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">All fixtures</p>
-          <TeamFixtureMonths fixtures={fixtures} teamId={id} />
+          <TeamFixtureMonths
+            fixtures={fixtures}
+            teamId={id}
+            donEligible={donEligible}
+            usedMonths={usedMonths}
+            activeDonMonth={activeDonMonth}
+            activatingMonth={activatingMonth}
+            onActivate={activateDoubleOrNothing}
+            onCancel={cancelDoubleOrNothing}
+          />
         </div>
       )}
 
@@ -349,9 +442,21 @@ function TeamCalendar({ fixtures, teamId }: { fixtures: any[]; teamId: string })
   )
 }
 
-function TeamFixtureMonths({ fixtures, teamId }: { fixtures: any[]; teamId: string }) {
+function TeamFixtureMonths({
+  fixtures, teamId, donEligible, usedMonths, activeDonMonth, activatingMonth, onActivate, onCancel,
+}: {
+  fixtures: any[]
+  teamId: string
+  donEligible: boolean
+  usedMonths: Set<string>
+  activeDonMonth: string | null
+  activatingMonth: string | null
+  onActivate: (month: string, fixtureIds: string[]) => void
+  onCancel: (month: string) => void
+}) {
   const currentMonth = new Date().toISOString().substring(0, 7)
   const [expanded, setExpanded] = useState<Set<string>>(new Set([currentMonth]))
+  const [confirmMonth, setConfirmMonth] = useState<string | null>(null)
 
   const groups = new Map<string, any[]>()
   for (const f of fixtures) {
@@ -377,7 +482,14 @@ function TeamFixtureMonths({ fixtures, teamId }: { fixtures: any[]; teamId: stri
       {sortedMonths.map(ym => {
         const isExpanded = expanded.has(ym)
         const monthFixtures = (groups.get(ym) ?? []).sort((a, b) => new Date(b.kickoff_time).getTime() - new Date(a.kickoff_time).getTime())
+        const scheduledIds = monthFixtures.filter(f => f.status === 'scheduled').map(f => f.id)
         const label = new Date(ym + '-01T12:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+        const isActiveMonth = activeDonMonth === ym
+        const canActivate = donEligible && ym >= currentMonth && !usedMonths.has(ym) && scheduledIds.length > 0
+        const isConfirming = confirmMonth === ym
+        const isBusy = activatingMonth === ym
+
         return (
           <div key={ym} className="rounded-xl border border-[var(--border)] overflow-hidden">
             <button
@@ -385,12 +497,57 @@ function TeamFixtureMonths({ fixtures, teamId }: { fixtures: any[]; teamId: stri
               className="w-full px-3 py-2.5 min-h-11 bg-[var(--bg-card)] flex items-center justify-between gap-2 text-left"
             >
               <span className="font-semibold text-sm text-[var(--text-primary)]">{label}</span>
-              <svg width="10" height="10" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isActiveMonth && (
+                  <>
+                    <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/10 px-1.5 py-0.5 rounded-full">⚡ Active</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={e => { e.stopPropagation(); onCancel(ym) }}
+                      className="text-[9px] text-[var(--text-muted)] hover:text-[var(--red)] underline underline-offset-2"
+                    >
+                      {isBusy ? '…' : 'Cancel'}
+                    </span>
+                  </>
+                )}
+                {!isActiveMonth && canActivate && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={e => { e.stopPropagation(); setConfirmMonth(v => v === ym ? null : ym); setExpanded(prev => new Set(prev).add(ym)) }}
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors ${isConfirming ? 'bg-[var(--accent)] text-white' : 'text-[var(--accent)] bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20'}`}
+                  >
+                    ⚡ Double
+                  </span>
+                )}
+                <svg width="10" height="10" viewBox="0 0 10 10" className={`shrink-0 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                  <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             </button>
             {isExpanded && (
               <div className="px-2 pb-2 pt-1 space-y-2 bg-[var(--bg)]">
+                {isConfirming && (
+                  <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-2.5 py-2 flex items-center gap-2">
+                    <p className="text-[10px] text-[var(--text-secondary)] flex-1">
+                      Double or Nothing for {label} — {scheduledIds.length} game{scheduledIds.length !== 1 ? 's' : ''}. Win = double points, lose = double the loss.
+                    </p>
+                    <button
+                      onClick={() => { onActivate(ym, scheduledIds); setConfirmMonth(null) }}
+                      disabled={isBusy}
+                      className="text-[10px] font-bold bg-[var(--accent)] text-white px-2.5 py-1.5 rounded-lg disabled:opacity-40 shrink-0 min-h-[32px]"
+                    >
+                      {isBusy ? 'Locking in…' : 'Lock in'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmMonth(null)}
+                      className="text-[10px] text-[var(--text-secondary)] px-2 py-1.5 shrink-0 min-h-[32px]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {monthFixtures.map(f => <FixtureRow key={f.id} fixture={f} teamId={teamId} />)}
               </div>
             )}
