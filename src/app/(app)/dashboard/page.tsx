@@ -785,9 +785,12 @@ function MyTeamFixtureRow({ team, fixtures, ownerMap }: {
           {fixtures.map(f => {
             const opponent = f.home_team_id === team.id ? f.away_team : f.home_team
             return (
-              <Link key={f.id} href={`/fixtures/${f.id}`} className="pressable flex flex-col items-center gap-1 shrink-0 w-12">
+              <Link key={f.id} href={`/fixtures/${f.id}`} className="pressable flex flex-col items-center gap-0.5 shrink-0 w-12" title={`vs ${opponent?.name}`}>
                 <CrestWithOwnerBadge team={opponent} ownerMap={ownerMap} />
-                <span className="text-[8px] text-[var(--text-muted)] text-center">
+                <span className="text-[8px] font-semibold text-[var(--text-secondary)] text-center truncate w-full leading-tight">
+                  {opponent?.short_name || opponent?.name}
+                </span>
+                <span className="text-[7px] text-[var(--text-muted)] text-center leading-tight">
                   {f.kickoff_time ? new Date(f.kickoff_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
                 </span>
               </Link>

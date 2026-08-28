@@ -783,7 +783,11 @@ function DonMatrix({
               <div className="flex flex-wrap items-center justify-center gap-0.5">
                 {fixtures.length > 0 ? fixtures.map((f: any) => {
                   const opp = f.home_team_id === team.id ? f.away_team : f.home_team
-                  return <TeamCrest key={f.id} team={opp} size="xs" />
+                  return (
+                    <span key={f.id} title={`vs ${opp?.name}`}>
+                      <TeamCrest team={opp} size="xs" />
+                    </span>
+                  )
                 }) : (
                   <span className="text-[8px] text-[var(--text-muted)]">—</span>
                 )}
@@ -795,7 +799,13 @@ function DonMatrix({
 
       {selectedFixtures.length > 0 && (
         <p className="text-[10px] text-[var(--text-muted)]">
-          {selectedFixtures.length} game{selectedFixtures.length !== 1 ? 's' : ''} covered in {formatMonth(donMonth)}. You can cancel anytime before a covered match kicks off — once a match starts, that result is locked in for good.
+          <span className="text-[var(--text-secondary)] font-medium">
+            vs {selectedFixtures.map((f: any) => {
+              const opp = f.home_team_id === team.id ? f.away_team : f.home_team
+              return opp?.short_name || opp?.name
+            }).join(', ')}
+          </span>
+          {' — '}{selectedFixtures.length} game{selectedFixtures.length !== 1 ? 's' : ''} covered in {formatMonth(donMonth)}. You can cancel anytime before a covered match kicks off — once a match starts, that result is locked in for good.
         </p>
       )}
       <div className="flex items-center gap-2 pt-1">
