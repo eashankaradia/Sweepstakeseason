@@ -781,13 +781,19 @@ function LineChart({
             const pts = values.map((v, i) => `${xCoord(i)},${yCoord(v)}`).join(' ')
             const endX = xCoord(values.length - 1)
             const endY = yCoord(values[values.length - 1])
+            const pointLabel = (v: number, i: number) =>
+              `${player.name} — Game ${i + 1}: ${invertY ? `#${v}` : `${v} pt${v === 1 ? '' : 's'}`}`
             return (
               <g key={player.id}>
                 <polyline points={pts} fill="none" stroke={player.color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
                 {values.map((v, i) => (
-                  <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="1.5" fill={player.color} />
+                  <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="1.5" fill={player.color}>
+                    <title>{pointLabel(v, i)}</title>
+                  </circle>
                 ))}
-                <circle cx={endX} cy={endY} r="3.5" fill={player.color} stroke="var(--bg-card)" strokeWidth="1.5" />
+                <circle cx={endX} cy={endY} r="3.5" fill={player.color} stroke="var(--bg-card)" strokeWidth="1.5">
+                  <title>{pointLabel(values[values.length - 1], values.length - 1)}</title>
+                </circle>
               </g>
             )
           })}
@@ -803,6 +809,26 @@ function LineChart({
         ))}
       </div>
     </div>
+  )
+}
+
+// Win/draw/loss are shape-coded as well as colour-coded — a circle, diamond
+// and triangle stay distinguishable for colourblind readers even though the
+// dots are too small to carry a text label.
+function ResultDot({ result, color }: { result: 'W' | 'D' | 'L'; color: string }) {
+  const common = { backgroundColor: color }
+  if (result === 'W') {
+    return <div className="w-[9px] h-[9px] rounded-full shrink-0" style={common} title="Win" />
+  }
+  if (result === 'D') {
+    return <div className="w-[7px] h-[7px] rotate-45 shrink-0" style={common} title="Draw" />
+  }
+  return (
+    <div
+      className="w-[10px] h-[9px] shrink-0"
+      style={{ ...common, clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
+      title="Loss"
+    />
   )
 }
 
@@ -884,14 +910,9 @@ function ResultDotsView({
                 <span className="text-[10px] font-semibold text-[var(--text-primary)] w-20 shrink-0 truncate">
                   {player.name.split(' ')[0]}
                 </span>
-                <div className="flex flex-wrap gap-[3px] flex-1 min-w-0">
+                <div className="flex flex-wrap gap-[3px] flex-1 min-w-0 items-center">
                   {dots.map((dot, i) => (
-                    <div
-                      key={i}
-                      className="w-[9px] h-[9px] rounded-full shrink-0"
-                      style={{ backgroundColor: dotColor[dot] }}
-                      title={dot}
-                    />
+                    <ResultDot key={i} result={dot} color={dotColor[dot]} />
                   ))}
                 </div>
                 <div className="flex gap-1.5 shrink-0 text-[9px] font-mono ml-2">
