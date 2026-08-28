@@ -62,10 +62,15 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
       supabase.from('player_team_assignments')
         .select('team_id, players(id,name,color)')
         .eq('league_id', fix.league_id),
+      // Only Double or Nothing is meant to show here pre-match — a pending
+      // Reverse activation must stay server-side until it resolves, since
+      // even the acting player's name would leak that this fixture has been
+      // targeted before kickoff.
       supabase.from('power_up_activations')
         .select('*, players(name,color)')
         .eq('fixture_id', id)
-        .eq('status', 'pending'),
+        .eq('status', 'pending')
+        .eq('power_up_type', 'double_or_nothing'),
       supabase.from('players').select('id,name,color,user_id').eq('league_id', fix.league_id),
       supabase.from('player_scores').select('player_id, total_points').eq('league_id', fix.league_id),
     ])
@@ -176,8 +181,6 @@ export default function MatchCentrePage({ params }: { params: Promise<{ id: stri
   // Power-up projections
   const homeDon = powerUps.find(p => p.power_up_type === 'double_or_nothing' && p.team_id === fixture.home_team_id)
   const awayDon = powerUps.find(p => p.power_up_type === 'double_or_nothing' && p.team_id === fixture.away_team_id)
-  const homeReverse = powerUps.find(p => p.power_up_type === 'reverse' && p.team_id === fixture.home_team_id)
-  const awayReverse = powerUps.find(p => p.power_up_type === 'reverse' && p.team_id === fixture.away_team_id)
 
   return (
     <AppShell title="Match Centre" backHref="/fixtures">
