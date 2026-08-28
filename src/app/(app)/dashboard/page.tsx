@@ -236,7 +236,12 @@ export default function DashboardPage() {
     // Power-up feed: Double or Nothing is visible to everyone at all times
     // (including future locked-in picks). Reverse only becomes visible once
     // the match it targeted has resolved (status flips pending -> applied),
-    // so nobody finds out beforehand who's been targeted.
+    // so nobody finds out beforehand who's been targeted. This has to be a
+    // server-side filter, not a client-side one applied after the fetch —
+    // Supabase queries run directly from the browser, so a pending Reverse
+    // row (and the resolved target name/colour from the join below) would
+    // otherwise be visible in the raw network response before any JS filter
+    // runs, defeating the whole point of keeping it secret pre-match.
     const { data: pupFeed } = await supabase
       .from('power_up_activations')
       .select(`*, players(name,color), target:target_player_id(name,color), teams(id,name,short_name,logo_url,primary_color,secondary_color),
@@ -244,9 +249,10 @@ export default function DashboardPage() {
           home_team:teams!fixtures_home_team_id_fkey(id,name,short_name,logo_url,primary_color,secondary_color),
           away_team:teams!fixtures_away_team_id_fkey(id,name,short_name,logo_url,primary_color,secondary_color))`)
       .eq('league_id', lg.id)
+      .or('power_up_type.eq.double_or_nothing,status.eq.applied')
       .order('activated_at', { ascending: false })
       .limit(60)
-    setPowerUpFeed(((pupFeed ?? []) as any[]).filter(p => p.power_up_type === 'double_or_nothing' || p.status === 'applied'))
+    setPowerUpFeed((pupFeed ?? []) as any[])
 
     // Giant Killer eligibility data: real table position computed from our
     // own completed results (see src/lib/giantKiller.ts), not the stale
@@ -807,19 +813,18 @@ function MyTeamFixtureRow({ team, fixtures, ownerMap }: {
 function PowerUpsFeed({ activations }: { activations: any[] }) {
   // Group Double or Nothing rows by (player, team, month) into one card each
   // since a single activation covers every fixture in that month.
-  type Group = { key: string; type: 'don'; player: any; team: any; month: string; total: number; applied: number; result: 'ahead' | 'behind' | 'even' | 'pending' }
+  type Group = { key: string; type: 'don'; player: any; team: any; month: string; total: number; applied: number; netDelta: number }
   const donGroups = new Map<string, Group>()
   const reverseRows: any[] = []
 
   for (const a of activations) {
     if (a.power_up_type === 'double_or_nothing') {
       const key = `${a.player_id}-${a.team_id}-${a.season_month}`
-      const g = donGroups.get(key) ?? { key, type: 'don', player: a.players, team: a.teams, month: a.season_month, total: 0, applied: 0, result: 'pending' }
+      const g = donGroups.get(key) ?? { key, type: 'don', player: a.players, team: a.teams, month: a.season_month, total: 0, applied: 0, netDelta: 0 }
       g.total++
       if (a.status === 'applied') {
         g.applied++
-        if (a.points_delta > 0) g.result = g.result === 'behind' ? 'even' : 'ahead'
-        else if (a.points_delta < 0) g.result = g.result === 'ahead' ? 'even' : 'behind'
+        g.netDelta += a.points_delta ?? 0
       }
       donGroups.set(key, g)
     } else if (a.power_up_type === 'reverse' && a.status === 'applied') {
@@ -843,8 +848,8 @@ function PowerUpsFeed({ activations }: { activations: any[] }) {
                 </p>
                 <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
                   {item.applied}/{item.total} games played
-                  {item.applied > 0 && item.result !== 'pending' && item.result !== 'even' && (
-                    <span className={item.result === 'ahead' ? 'text-[var(--green)]' : 'text-[var(--red)]'}> · {item.result === 'ahead' ? 'paying off' : 'backfiring'}</span>
+                  {item.applied > 0 && item.netDelta !== 0 && (
+                    <span className={item.netDelta > 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}> · {item.netDelta > 0 ? 'paying off' : 'backfiring'}</span>
                   )}
                 </p>
               </div>
