@@ -30,6 +30,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/how-to-join') ||
     pathname.startsWith('/join/') ||
+    pathname.startsWith('/watch/') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
