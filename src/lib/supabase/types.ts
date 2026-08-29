@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -699,6 +699,7 @@ export type Database = {
           draft_locked_at: string | null
           id: string
           name: string
+          public_readonly: boolean
           season: string
           status: string | null
           updated_at: string | null
@@ -711,6 +712,7 @@ export type Database = {
           draft_locked_at?: string | null
           id?: string
           name: string
+          public_readonly?: boolean
           season: string
           status?: string | null
           updated_at?: string | null
@@ -723,6 +725,7 @@ export type Database = {
           draft_locked_at?: string | null
           id?: string
           name?: string
+          public_readonly?: boolean
           season?: string
           status?: string | null
           updated_at?: string | null
@@ -1072,4 +1075,3 @@ export type UserProfile = Database['public']['Tables']['user_profiles']['Row']
 export type LeagueMembership = Database['public']['Tables']['league_memberships']['Row']
 export type AdminSetting = Database['public']['Tables']['admin_settings']['Row']
 export type PowerUpActivation = Database['public']['Tables']['power_up_activations']['Row']
-export type ActivityFeedEvent = Database['public']['Tables']['activity_feed']['Row']

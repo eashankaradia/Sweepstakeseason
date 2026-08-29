@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { Toggle } from '@/components/ui/Toggle'
 import { PageLoader } from '@/components/ui/LoadingSpinner'
 import type { League } from '@/lib/supabase/types'
 import { DEFAULT_SCORING_RULES } from '@/lib/scoring'
@@ -29,6 +30,8 @@ export default function LeagueSettingsPage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState<string | null>(null)
   const [revealedCode, setRevealedCode] = useState<string | null>(null)
+  const [togglingPublic, setTogglingPublic] = useState<string | null>(null)
+  const [copiedPublic, setCopiedPublic] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -81,6 +84,20 @@ export default function LeagueSettingsPage() {
     await navigator.clipboard.writeText(url)
     setCopied(league.id)
     setTimeout(() => setCopied(null), 2000)
+  }
+
+  async function togglePublicReadonly(league: League) {
+    setTogglingPublic(league.id)
+    await supabase.from('sweepstake_leagues').update({ public_readonly: !league.public_readonly }).eq('id', league.id)
+    setTogglingPublic(null)
+    loadData()
+  }
+
+  async function copyPublicLink(league: League) {
+    const url = `${window.location.origin}/watch/${league.id}`
+    await navigator.clipboard.writeText(url)
+    setCopiedPublic(league.id)
+    setTimeout(() => setCopiedPublic(null), 2000)
   }
 
   if (loading) return <AppShell title="League Setup" backHref="/settings"><PageLoader /></AppShell>
@@ -139,6 +156,32 @@ export default function LeagueSettingsPage() {
                 {regenerating === lg.id ? '...' : 'Regen'}
               </button>
             </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] px-3 py-2 mb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] text-[var(--text-muted)]">Public read-only link</p>
+                <p className="text-[9px] text-[var(--text-secondary)] mt-0.5">Anyone with this link can view standings, fixtures and teams — no sign-in, no edits.</p>
+              </div>
+              <Toggle
+                checked={!!lg.public_readonly}
+                onChange={() => togglePublicReadonly(lg)}
+                disabled={togglingPublic === lg.id}
+                label="Public read-only link"
+              />
+            </div>
+            {lg.public_readonly && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="font-mono text-xs text-[var(--text-secondary)] flex-1 truncate">/watch/{lg.id}</span>
+                <button
+                  onClick={() => copyPublicLink(lg)}
+                  className="text-xs px-2 py-1 rounded-md bg-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+                >
+                  {copiedPublic === lg.id ? 'Copied!' : 'Copy link'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
