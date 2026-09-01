@@ -8,6 +8,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
+import { shareMonthlyTableToWhatsApp } from '@/lib/utils'
 import Link from 'next/link'
 
 type FormResult = 'W' | 'D' | 'L'
@@ -513,13 +514,13 @@ export default function StandingsPage() {
       )}
 
       {tab === 'monthly' && (
-        <MonthlyView groups={monthlyGroups} myUserId={myUserId} />
+        <MonthlyView groups={monthlyGroups} myUserId={myUserId} league={league} />
       )}
     </AppShell>
   )
 }
 
-function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: string | null }) {
+function MonthlyView({ groups, myUserId, league }: { groups: MonthGroup[]; myUserId: string | null; league: any }) {
   const currentMonth = new Date().toISOString().substring(0, 7)
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set([currentMonth]))
 
@@ -548,11 +549,13 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
         const isExpanded = expandedMonths.has(month)
         return (
           <div key={month} className={`rounded-xl border overflow-hidden ${isCurrent ? 'border-[var(--accent)]/40' : 'border-[var(--border)]'}`}>
-            <button
-              onClick={() => toggleMonth(month)}
-              className={`w-full px-3 py-2.5 min-h-11 border-b flex items-center justify-between gap-2 text-left ${isCurrent ? 'bg-[var(--accent)]/8 border-[var(--accent)]/30' : 'bg-[var(--bg-card)] border-[var(--border)]'}`}
+            <div
+              className={`w-full px-3 py-2.5 min-h-11 border-b flex items-center justify-between gap-2 ${isCurrent ? 'bg-[var(--accent)]/8 border-[var(--accent)]/30' : 'bg-[var(--bg-card)] border-[var(--border)]'}`}
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => toggleMonth(month)}
+                className="flex-1 flex items-center gap-2 min-w-0 text-left"
+              >
                 <svg
                   width="10" height="10" viewBox="0 0 10 10"
                   className={`shrink-0 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}
@@ -563,14 +566,30 @@ function MonthlyView({ groups, myUserId }: { groups: MonthGroup[]; myUserId: str
                 {isCurrent && (
                   <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent)]/15 px-1.5 py-0.5 rounded-full shrink-0">Current</span>
                 )}
-              </div>
+              </button>
               <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] shrink-0">
-                {winner && <span className="text-amber-400 font-medium">🥇 {winner.player_name}</span>}
+                {winner && <span className="text-amber-400 font-medium hidden sm:inline">🥇 {winner.player_name}</span>}
                 {last && last.player_id !== winner?.player_id && (
-                  <span className="text-red-400 font-medium">🪣 {last.player_name}</span>
+                  <span className="text-red-400 font-medium hidden sm:inline">🪣 {last.player_name}</span>
                 )}
+                <button
+                  onClick={() => shareMonthlyTableToWhatsApp({
+                    leagueName: league?.name ?? 'Sweepstake',
+                    month,
+                    rows,
+                    publicUrl: league?.public_readonly ? `${window.location.origin}/watch/${league.id}/standings` : undefined,
+                  })}
+                  aria-label={`Share ${label} table to WhatsApp`}
+                  title="Share to WhatsApp"
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                    <path d="M12.04 0C5.446 0 .103 5.343.103 11.938c0 2.105.55 4.163 1.596 5.976L0 24l6.246-1.638a11.9 11.9 0 005.79 1.474h.005c6.593 0 11.937-5.344 11.937-11.938C23.978 5.343 18.635 0 12.04 0zm0 21.845h-.005a9.9 9.9 0 01-5.045-1.382l-.362-.215-3.744.982.999-3.65-.235-.374a9.9 9.9 0 01-1.517-5.278c0-5.462 4.44-9.9 9.906-9.9 2.647 0 5.132 1.03 7.004 2.903a9.85 9.85 0 012.898 6.998c0 5.462-4.44 9.9-9.899 9.9z" />
+                  </svg>
+                </button>
               </div>
-            </button>
+            </div>
             {isExpanded && rows.map((row, idx) => {
               const isMe = row.player_id === myUserId
               return (
