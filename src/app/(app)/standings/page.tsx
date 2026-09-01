@@ -8,7 +8,7 @@ import { TeamCrest } from '@/components/ui/TeamCrest'
 import { Badge } from '@/components/ui/Badge'
 import { TabBar } from '@/components/ui/TabBar'
 import { PageLoader, EmptyState, ErrorState } from '@/components/ui/LoadingSpinner'
-import { shareMonthlyTableToWhatsApp } from '@/lib/utils'
+import { shareMonthlyTableToWhatsApp } from '@/lib/shareImage'
 import Link from 'next/link'
 
 type FormResult = 'W' | 'D' | 'L'
