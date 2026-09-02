@@ -22,7 +22,8 @@ export default function PlayersSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', email: '', color: PLAYER_COLORS[0] })
+  const [form, setForm] = useState({ name: '', email: '', color: PLAYER_COLORS[0], buddies: [] as string[] })
+  const [buddyInput, setBuddyInput] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -53,8 +54,8 @@ export default function PlayersSettingsPage() {
     setFormError('')
     setSaving(true)
     const { error } = editingId
-      ? await supabase.from('players').update({ name: form.name.trim(), email: form.email || null, color: form.color }).eq('id', editingId)
-      : await supabase.from('players').insert({ league_id: league.id, name: form.name.trim(), email: form.email || null, color: form.color, position: players.length + 1 })
+      ? await supabase.from('players').update({ name: form.name.trim(), email: form.email || null, color: form.color, buddies: form.buddies }).eq('id', editingId)
+      : await supabase.from('players').insert({ league_id: league.id, name: form.name.trim(), email: form.email || null, color: form.color, buddies: form.buddies, position: players.length + 1 })
     setSaving(false)
     if (error) {
       setFormError(`Couldn't save: ${error.message}`)
@@ -62,7 +63,8 @@ export default function PlayersSettingsPage() {
     }
     setAdding(false)
     setEditingId(null)
-    setForm({ name: '', email: '', color: PLAYER_COLORS[0] })
+    setForm({ name: '', email: '', color: PLAYER_COLORS[0], buddies: [] })
+    setBuddyInput('')
     loadData()
   }
 
@@ -77,7 +79,8 @@ export default function PlayersSettingsPage() {
   }
 
   function startEdit(player: Player) {
-    setForm({ name: player.name, email: player.email ?? '', color: player.color ?? PLAYER_COLORS[0] })
+    setForm({ name: player.name, email: player.email ?? '', color: player.color ?? PLAYER_COLORS[0], buddies: player.buddies ?? [] })
+    setBuddyInput('')
     setFormError('')
     setEditingId(player.id)
     setAdding(true)
@@ -87,7 +90,19 @@ export default function PlayersSettingsPage() {
     setAdding(false)
     setEditingId(null)
     setFormError('')
-    setForm({ name: '', email: '', color: PLAYER_COLORS[players.length % PLAYER_COLORS.length] })
+    setForm({ name: '', email: '', color: PLAYER_COLORS[players.length % PLAYER_COLORS.length], buddies: [] })
+    setBuddyInput('')
+  }
+
+  function addBuddy() {
+    const name = buddyInput.trim()
+    if (!name || form.buddies.includes(name)) { setBuddyInput(''); return }
+    setForm(f => ({ ...f, buddies: [...f.buddies, name] }))
+    setBuddyInput('')
+  }
+
+  function removeBuddy(name: string) {
+    setForm(f => ({ ...f, buddies: f.buddies.filter(b => b !== name) }))
   }
 
   if (loading) return <AppShell title="Players" backHref="/settings"><PageLoader /></AppShell>
@@ -102,7 +117,8 @@ export default function PlayersSettingsPage() {
             <p className="text-xs text-[var(--text-secondary)]">{players.length}/{MAX_PLAYERS} players</p>
             {players.length < MAX_PLAYERS && !adding && (
               <Button size="sm" onClick={() => {
-                setForm({ name: '', email: '', color: PLAYER_COLORS[players.length % PLAYER_COLORS.length] })
+                setForm({ name: '', email: '', color: PLAYER_COLORS[players.length % PLAYER_COLORS.length], buddies: [] })
+                setBuddyInput('')
                 setAdding(true)
               }}>+ Add player</Button>
             )}
@@ -163,6 +179,51 @@ export default function PlayersSettingsPage() {
                     ))}
                   </div>
                 </div>
+                <div>
+                  <label htmlFor="player-buddy-input" className="text-xs text-[var(--text-secondary)] block mb-1">
+                    Buddies <span className="text-[var(--text-muted)]">(friends following this player — no account needed)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="player-buddy-input"
+                      name="buddy"
+                      value={buddyInput}
+                      onChange={e => setBuddyInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addBuddy() }
+                      }}
+                      placeholder="Add a name and press Enter"
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={addBuddy}
+                      className="shrink-0 px-3 rounded-lg bg-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {form.buddies.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {form.buddies.map(name => (
+                        <span
+                          key={name}
+                          className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-[var(--accent)]/12 text-[var(--accent)] text-xs font-medium"
+                        >
+                          {name}
+                          <button
+                            type="button"
+                            onClick={() => removeBuddy(name)}
+                            aria-label={`Remove ${name}`}
+                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-[var(--accent)]/20"
+                          >
+                            <svg viewBox="0 0 10 10" width="8" height="8"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 mt-3">
                 <Button onClick={savePlayer} loading={saving} className="flex-1">{editingId ? 'Save changes' : 'Add player'}</Button>
@@ -180,6 +241,9 @@ export default function PlayersSettingsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm text-[var(--text-primary)] truncate">{player.name}</p>
                     {player.email && <p className="text-xs text-[var(--text-secondary)] truncate">{player.email}</p>}
+                    {player.buddies && player.buddies.length > 0 && (
+                      <p className="text-[10px] text-[var(--text-muted)] truncate">👥 {player.buddies.join(', ')}</p>
+                    )}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button

@@ -46,6 +46,7 @@ export default function PublicTeamDetailPage({ params }: { params: Promise<{ lea
   if (!team) return <ErrorState title="Team not found" onRetry={load} />
 
   const owners = assignments.filter((a: any) => a.teams?.id === teamId && a.players).map((a: any) => a.players)
+  const buddies = [...new Set(owners.flatMap((o: any) => o.buddies ?? []))] as string[]
   const scores = teamScores.filter((ts: any) => ts.team_id === teamId)
   const teamScore = scores.length > 0 ? {
     wins: scores.reduce((s: number, ts: any) => s + (ts.wins ?? 0), 0),
@@ -100,6 +101,11 @@ export default function PublicTeamDetailPage({ params }: { params: Promise<{ lea
               </Link>
             ))}
           </div>
+          {buddies.length > 0 && (
+            <p className="text-[10px] text-[var(--text-secondary)] mt-2.5 pt-2.5 border-t border-[var(--border)]">
+              <span className="text-[var(--text-muted)]">👥 Followed by </span>{buddies.join(', ')}
+            </p>
+          )}
         </div>
       )}
 

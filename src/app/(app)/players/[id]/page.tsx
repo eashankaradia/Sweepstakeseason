@@ -183,6 +183,11 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
               ))}
             </div>
           )}
+          {player.buddies?.length > 0 && (
+            <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 truncate">
+              <span className="text-[var(--text-muted)]">👥 Followed by </span>{player.buddies.join(', ')}
+            </p>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <p className="font-display text-3xl font-black" style={{ color: player.color }}>{totalPts}</p>
