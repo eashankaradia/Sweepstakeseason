@@ -61,6 +61,11 @@ export default function PublicPlayerDetailPage({ params }: { params: Promise<{ l
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-lg text-[var(--text-primary)] truncate">{player.name}</h2>
           {position > 0 && <p className="text-xs text-[var(--text-secondary)]">#{position} of {players.length}</p>}
+          {player.buddies?.length > 0 && (
+            <p className="text-[10px] text-[var(--text-secondary)] mt-1 truncate">
+              <span className="text-[var(--text-muted)]">👥 Followed by </span>{player.buddies.join(', ')}
+            </p>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <p className="font-display text-3xl font-black" style={{ color: player.color }}>{score?.total_points ?? 0}</p>

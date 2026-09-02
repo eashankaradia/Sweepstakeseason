@@ -51,7 +51,7 @@ export async function fetchPublicLeagueData(leagueId: string): Promise<
   ] = await Promise.all([
     supabase.from('players').select('*').eq('league_id', leagueId).order('position', { ascending: true, nullsFirst: false }),
     supabase.from('player_scores').select('*').eq('league_id', leagueId),
-    supabase.from('player_team_assignments').select('*, teams(*), players(id,name,color)').eq('league_id', leagueId),
+    supabase.from('player_team_assignments').select('*, teams(*), players(id,name,color,buddies)').eq('league_id', leagueId),
     supabase.from('team_scores').select('*, teams(*)').eq('league_id', leagueId),
     supabase.from('fixtures')
       .select('*, home_team:teams!fixtures_home_team_id_fkey(*), away_team:teams!fixtures_away_team_id_fkey(*)')

@@ -497,6 +497,7 @@ export type Database = {
       players: {
         Row: {
           auth_user_id: string | null
+          buddies: string[]
           color: string | null
           created_at: string | null
           email: string | null
@@ -509,6 +510,7 @@ export type Database = {
         }
         Insert: {
           auth_user_id?: string | null
+          buddies?: string[]
           color?: string | null
           created_at?: string | null
           email?: string | null
@@ -521,6 +523,7 @@ export type Database = {
         }
         Update: {
           auth_user_id?: string | null
+          buddies?: string[]
           color?: string | null
           created_at?: string | null
           email?: string | null

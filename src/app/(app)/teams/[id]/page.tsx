@@ -50,7 +50,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
     const [{ data: assignments }, { data: score }, { data: fix }] = await Promise.all([
       supabase.from('player_team_assignments')
-        .select('players(id,name,color,user_id)')
+        .select('players(id,name,color,user_id,buddies)')
         .eq('league_id', leagueId)
         .eq('team_id', id),
       supabase.from('team_scores')
@@ -158,6 +158,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     return 'L'
   }).reverse()
 
+  const buddies = [...new Set(owners.flatMap((o: any) => o.buddies ?? []))] as string[]
+
   const isMyTeam = !!myPlayerId
   // A player can only Double or Nothing a given club once, ever, and only
   // one club at a time across their whole squad each calendar month.
@@ -219,6 +221,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               </Link>
             ))}
           </div>
+          {buddies.length > 0 && (
+            <p className="text-[10px] text-[var(--text-secondary)] mt-2.5 pt-2.5 border-t border-[var(--border)]">
+              <span className="text-[var(--text-muted)]">👥 Followed by </span>{buddies.join(', ')}
+            </p>
+          )}
         </div>
       )}
 
