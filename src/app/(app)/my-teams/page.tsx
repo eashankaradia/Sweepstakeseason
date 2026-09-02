@@ -362,8 +362,13 @@ function MineView({
   for (let cursor = currentMonthStr; cursor <= lastSeasonMonth; ) {
     availableMonths.push(cursor)
     const [y, m] = cursor.split('-').map(Number)
-    const next = new Date(y, m, 1)
-    cursor = next.toISOString().substring(0, 7)
+    // Pure integer month arithmetic — advancing via `new Date(...).toISOString()`
+    // round-trips through local time, and in any UTC-positive timezone (e.g. UK
+    // on BST) local midnight on the 1st shifts back into the previous UTC day,
+    // leaving `cursor` unchanged and looping forever.
+    const nextY = m === 12 ? y + 1 : y
+    const nextM = m === 12 ? 1 : m + 1
+    cursor = `${nextY}-${String(nextM).padStart(2, '0')}`
   }
 
   const donAvailableThisMonth = !usedMonths.has(currentMonthStr)
