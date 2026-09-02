@@ -214,12 +214,15 @@ export default function DashboardPage() {
             .or(orClause)
             .order('kickoff_time', { ascending: true })
             .limit(150)
+          const currentMonthStr = new Date().toISOString().substring(0, 7)
           const byTeam = new Map<string, any[]>()
           for (const f of (upcoming ?? []) as any[]) {
+            const fixMonth = (f.kickoff_time as string | null)?.substring(0, 7)
+            if (fixMonth !== currentMonthStr) continue
             for (const tid of myTeamIds) {
               if (f.home_team_id !== tid && f.away_team_id !== tid) continue
               const arr = byTeam.get(tid) ?? []
-              if (arr.length < 5) arr.push(f)
+              arr.push(f)
               byTeam.set(tid, arr)
             }
           }
@@ -452,7 +455,7 @@ export default function DashboardPage() {
       {/* Your clubs' next fixtures */}
       {hasDraft && myTeams.length > 0 && (
         <section className="mb-5">
-          <SectionHeader title="Your clubs' next fixtures" action={<Link href="/my-teams">All →</Link>} />
+          <SectionHeader title="Your clubs' fixtures this month" action={<Link href="/my-teams">All →</Link>} />
           <div className="space-y-3">
             {myTeams.map(team => (
               <MyTeamFixtureRow
@@ -785,7 +788,7 @@ function MyTeamFixtureRow({ team, fixtures, ownerMap }: {
       </Link>
       <div className="w-px self-stretch bg-[var(--border)] shrink-0" />
       {fixtures.length === 0 ? (
-        <p className="text-[11px] text-[var(--text-muted)] flex-1">No upcoming fixtures scheduled yet</p>
+        <p className="text-[11px] text-[var(--text-muted)] flex-1">No fixtures left this month</p>
       ) : (
         <div className="flex items-center gap-3 flex-1 overflow-x-auto">
           {fixtures.map(f => {
